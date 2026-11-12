@@ -1,0 +1,10 @@
+{
+  "lockfileVersion": 1,
+  "canons": "0.1.0",
+  "locale": "en",
+  "block": "76260fef3a357e051e6038211919ea5317fe03b1f9928851fe6fe0cbd2db9188",
+  "files": {
+    ".agents/rules/canons/layout.md": "c67c4d9906c782c9f50c2328cdd4927a20fa076924f2ffaaa228fadb280c8a6c",
+    ".agents/rules/canons/vendor.md": "970bad990199c7269f91ace4296120688eecb7b1c622069fe1f8ad71983782bb"
+  }
+}

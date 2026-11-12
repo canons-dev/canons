@@ -1,0 +1,57 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { parseConfig } from "../config.ts";
+import {
+  extractBlock,
+  isBreakingUpgrade,
+  loadCanon,
+  renderBlock,
+  sha256,
+  upsertBlock,
+} from "../content.ts";
+
+test("renderBlock / extractBlock round-trip", () => {
+  const canon = loadCanon("en");
+  const block = renderBlock(canon);
+  const info = extractBlock(`# T\n\n${block}\n\nrest\n`);
+  assert.ok(info);
+  assert.equal(info.body, canon.block);
+  assert.equal(info.attrs.sha256, sha256(canon.block));
+  assert.equal(info.attrs.version, canon.version);
+});
+
+test("upsertBlock inserts after the H1 and replaces in place", () => {
+  const canon = loadCanon("en");
+  const block = renderBlock(canon);
+  const inserted = upsertBlock("# Title\n\nproject text\n", block);
+  assert.match(inserted, /^# Title\n\n<!-- canons:begin /);
+  assert.match(inserted, /canons:end -->\n\nproject text\n$/);
+  assert.equal(upsertBlock(inserted, block), inserted, "idempotent");
+});
+
+test("extractBlock rejects duplicate blocks", () => {
+  const block = renderBlock(loadCanon("en"));
+  assert.throws(() => extractBlock(`${block}\n${block}`), /exactly one/);
+});
+
+test("isBreakingUpgrade", () => {
+  assert.equal(isBreakingUpgrade("1.2.0", "2.0.0"), true);
+  assert.equal(isBreakingUpgrade("1.2.0", "1.3.0"), false);
+  assert.equal(isBreakingUpgrade("0.1.0", "0.2.0"), true);
+  assert.equal(isBreakingUpgrade("0.1.0", "0.1.5"), false);
+  assert.equal(isBreakingUpgrade("1.0.0", "0.9.0"), false);
+});
+
+test("parseConfig rejects unknown keys and unshipped features", () => {
+  assert.equal(parseConfig({ version: 1 }).locale, "en");
+  assert.throws(() => parseConfig({ version: 1, locales: "x" }), /unknown key/);
+  assert.throws(() => parseConfig({ version: 1, presets: ["x"] }), /presets/);
+  assert.throws(() => parseConfig({ version: 1, hooks: true }), /hooks/);
+  assert.throws(() => parseConfig({ version: 1, clients: ["vim"] }), /clients/);
+  assert.throws(() => parseConfig({ version: 1, budgetBytes: 40000 }), /32768/);
+  assert.throws(() => parseConfig({ version: 1, rulesDir: "../x" }), /rulesDir/);
+});
+
+test("unknown locale lists the available ones", () => {
+  assert.throws(() => loadCanon("xx"), /available: en, zh-CN/);
+});

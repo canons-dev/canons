@@ -1,0 +1,44 @@
+{
+  "name": "canons",
+  "version": "0.1.0",
+  "description": "One source of truth for coding-agent instructions (AGENTS.md, path-scoped rules, skills) shared by Codex, Claude Code and other clients, with deterministic checks.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "canons": "out/cli.js"
+  },
+  "files": [
+    "out",
+    "LICENSE",
+    "NOTICE",
+    "README.md",
+    "README.zh-CN.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node src/build.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test \"src/test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/canons-dev/canons.git"
+  },
+  "homepage": "https://github.com/canons-dev/canons#readme",
+  "bugs": "https://github.com/canons-dev/canons/issues",
+  "keywords": [
+    "agents-md",
+    "codex",
+    "claude-code",
+    "coding-agent",
+    "rules",
+    "conventions"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^6.0.3"
+  }
+}

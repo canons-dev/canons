@@ -1,0 +1,51 @@
+// `canons doctor`: environment diagnostics with fix hints. Informational only.
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadConfig } from "./config.ts";
+
+export function doctor(root: string): string[] {
+  const out: string[] = [];
+  const [major = 0] = process.versions.node.split(".").map(Number);
+  out.push(
+    major >= 22
+      ? `ok    Node ${process.versions.node}`
+      : `fix   Node ${process.versions.node} is below the supported 22`,
+  );
+  try {
+    const symlinks = execFileSync("git", ["config", "--get", "core.symlinks"], {
+      cwd: root,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (symlinks === "false")
+      out.push(
+        "fix   git core.symlinks=false: client adapters would be checked out as plain files. Run `git config core.symlinks true` (on Windows enable Developer Mode first) and re-checkout.",
+      );
+  } catch {
+    // Unset means the platform default (true outside Windows).
+  }
+  let clients: string[] = [];
+  try {
+    clients = loadConfig(root).clients;
+  } catch (error) {
+    out.push(`fix   ${(error as Error).message}`);
+  }
+  if (clients.includes("codex"))
+    out.push(
+      "note  Codex skips project AGENTS.md when the project is not trusted: trust this project in Codex.",
+      "note  Codex reads .agents/skills natively; no adapter needed.",
+    );
+  if (clients.includes("claude"))
+    out.push(
+      "note  Claude Code loads .claude/rules recursively and honors only the `paths` frontmatter key; queries via `canons scopes` still apply.",
+    );
+  out.push(
+    "note  Cursor and GitHub Copilot read AGENTS.md natively. For Gemini CLI set context.fileName to [\"AGENTS.md\"] in .gemini/settings.json.",
+  );
+  if (existsSync(resolve(root, ".codex/hooks.json")))
+    out.push(
+      "note  .codex/hooks.json found: Codex runs repo hooks only after you review and trust them (/hooks).",
+    );
+  return out;
+}
