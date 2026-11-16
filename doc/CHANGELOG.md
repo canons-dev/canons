@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- READMEs: a prompt to paste into a coding agent that installs or updates canons.
+- The package now ships `doc/CHANGELOG.md`, so agents can read upgrade notes offline.
 - `doctor` and the READMEs no longer claim that Codex skips `AGENTS.md` in an untrusted project: `codex exec` reads it either way.
 
 ## 0.1.1 (2026-11-16)

@@ -12,7 +12,8 @@
     "LICENSE",
     "NOTICE",
     "README.md",
-    "README.zh-CN.md"
+    "README.zh-CN.md",
+    "doc/CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22"

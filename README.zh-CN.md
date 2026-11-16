@@ -13,6 +13,27 @@
 - **共享基线。** `AGENTS.md` 里的托管区块承载通用的 agent 约定（Git 授权、验证、交接、文档卫生）。项目自己的规则写在区块之外。
 - **确定性守护。** `canons check` 能发现：托管内容被手改、用复制代替软链接、规则里的死链、会让 Codex 跳过 `AGENTS.md` 的 `AGENTS.override.md`，以及超出 Codex 读取上限（32 KiB）的指令链。
 
+## 交给 coding agent 安装
+
+在仓库根目录，把下面这段粘贴给 Codex、Claude Code 或其他 coding agent。以后再粘贴一次就是更新：同一套步骤第一次是安装，之后是升级。
+
+```text
+在这个仓库里安装或更新 canons（https://github.com/canons-dev/canons）。canons 把 coding agent 的指令集中在一处：AGENTS.md、.agents/rules/ 和 .agents/skills/。
+
+1. 运行 `git status`。如果有未提交的改动，列出来并先问我再继续。
+2. 确认有 Node 22 或更高版本。如果仓库里没有 package.json，先问我再创建。
+3. 运行 `npm install --save-dev @canons-dev/canons@latest`。
+4. 如果没有 canons.json，运行 `npx canons init --locale zh-CN`；否则运行 `npx canons sync`。
+5. 如果命令停下来：
+   - 因为破坏性升级：把 node_modules/@canons-dev/canons/doc/CHANGELOG.md 里新旧版本之间的条目给我看，我同意后再运行 `npx canons sync --accept-major`。
+   - 因为托管内容被手改：把改动给我看。除非我说可以，不要加 `--force`。
+   - 因为 CLAUDE.md、.claude/rules 或 .claude/skills 是实体文件或目录：把内容移进 AGENTS.md（canons 区块之外）、.agents/rules/ 或 .agents/skills/，然后重跑。删除任何东西前先问我。
+   - 因为沙箱不允许写 .agents/（Codex 的沙箱会保护这个目录）：请我批准在沙箱外运行该命令，或者由我自己运行。
+6. 运行 `npx canons check`，修复它报告的问题。
+7. 阅读 AGENTS.md 里的 canons 区块，此后照它执行。
+8. 不要改动这些步骤以外的任何东西。总结改了什么（`git diff --stat`）以及需要我做什么。除非我要求，不要提交。
+```
+
 ## 快速开始
 
 需要 Node 22 及以上，并且在 git 仓库里运行。
