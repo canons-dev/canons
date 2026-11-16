@@ -1,6 +1,6 @@
 {
   "name": "@canons-dev/canons",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "One source of truth for coding-agent instructions (AGENTS.md, path-scoped rules, skills) shared by Codex, Claude Code and other clients, with deterministic checks.",
   "license": "Apache-2.0",
   "type": "module",

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 (2026-11-16)
 
 - READMEs: a prompt to paste into a coding agent that installs or updates canons.
 - The package now ships `doc/CHANGELOG.md`, so agents can read upgrade notes offline.
