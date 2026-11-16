@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-11-16)
+
+- `runner` in `canons.json`: `local` (`npx canons`, needs the dev dependency) or `npx` (`npx -y @canons-dev/canons@<version>`, no package.json needed). `init` picks `npx` when the repository has no package.json; `check` warns when the local runner's package is missing.
+- `doctor` and the READMEs note that interactive Codex asks to trust the folder before it starts.
+- `init` and `sync` find every refusal, including client files in the way and directories they cannot write, before writing anything; `init` writes `canons.json` last.
+
 ## 0.1.2 (2026-11-16)
 
 - READMEs: a prompt to paste into a coding agent that installs or updates canons.

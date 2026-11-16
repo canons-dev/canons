@@ -34,6 +34,7 @@ export function doctor(root: string): string[] {
   if (clients.includes("codex"))
     out.push(
       "note  Codex reads AGENTS.md from the repository root down to the working directory; no adapter needed.",
+      "note  Interactive Codex asks you to trust this folder before it starts; trusting also lets project-level Codex settings run code.",
       "note  Codex reads .agents/skills natively; no adapter needed.",
     );
   if (clients.includes("claude"))

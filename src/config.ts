@@ -12,10 +12,19 @@ export const CODEX_CHAIN_MAX_BYTES = 32 * 1024;
 export const CLIENTS = ["codex", "claude"] as const;
 export type Client = (typeof CLIENTS)[number];
 
+/**
+ * How the managed rules tell agents to run canons: `local` relies on the
+ * package being a dev dependency (`npx canons`); `npx` names the exact
+ * published version, for repositories without a package.json.
+ */
+export const RUNNERS = ["local", "npx"] as const;
+export type Runner = (typeof RUNNERS)[number];
+
 export interface CanonsConfig {
   version: 1;
   locale: string;
   clients: Client[];
+  runner: Runner;
   rulesDir: string;
   skillsDir: string;
   /** Byte budget for the root AGENTS.md alone. */
@@ -30,6 +39,7 @@ export const DEFAULT_CONFIG: CanonsConfig = {
   version: 1,
   locale: "en",
   clients: ["codex", "claude"],
+  runner: "local",
   rulesDir: ".agents/rules",
   skillsDir: ".agents/skills",
   budgetBytes: 24 * 1024,
@@ -42,6 +52,7 @@ const KEYS = new Set([
   "version",
   "locale",
   "clients",
+  "runner",
   "rulesDir",
   "skillsDir",
   "budgetBytes",
@@ -68,6 +79,8 @@ export function parseConfig(raw: unknown): CanonsConfig {
     config.clients.some((c) => !(CLIENTS as readonly string[]).includes(c))
   )
     fail(`clients must be a list drawn from: ${CLIENTS.join(", ")}`);
+  if (!(RUNNERS as readonly string[]).includes(config.runner))
+    fail(`runner must be one of: ${RUNNERS.join(", ")}`);
   for (const key of ["rulesDir", "skillsDir"] as const) {
     const value = config[key];
     if (

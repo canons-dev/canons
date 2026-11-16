@@ -11,14 +11,16 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, posix, relative, resolve } from "node:path";
+import { posix, relative, resolve } from "node:path";
 import {
   CONFIG_FILE,
   DEFAULT_CONFIG,
   LOCK_FILE,
   ROOT_FILE,
   loadConfig,
+  parseConfig,
   type CanonsConfig,
+  type Runner,
 } from "./config.ts";
 import {
   MANAGED_SUBDIR,
@@ -67,9 +69,17 @@ export function managedRulePath(config: CanonsConfig, file: string): string {
 }
 
 export function sync(root: string, options: SyncOptions = {}): string[] {
+  return apply(root, loadConfig(root), options);
+}
+
+/**
+ * Writes everything for `config`. All refusals (breaking upgrade, local
+ * edits, client files in the way, unwritable directories) are found before
+ * the first file is written, so a refused run leaves the repository as it was.
+ */
+function apply(root: string, config: CanonsConfig, options: SyncOptions): string[] {
   const log: string[] = [];
-  const config = loadConfig(root);
-  const canon = loadCanon(config.locale, options.contentRoot ?? CONTENT_ROOT);
+  const canon = loadCanon(config.locale, options.contentRoot ?? CONTENT_ROOT, config.runner);
   const lock = readLock(root);
 
   if (lock && isBreakingUpgrade(lock.canons, canon.version) && !options.acceptMajor)
@@ -104,6 +114,44 @@ export function sync(root: string, options: SyncOptions = {}): string[] {
       `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${config.rulesDir}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
     );
 
+  // Client adapters: never clobber a real file.
+  const links: [string, string][] = [];
+  for (const [link, target] of clientLinks(config)) {
+    const stat = lstatSync(resolve(root, link), { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() && readlinkSync(resolve(root, link)) === target) continue;
+    if (stat)
+      throw new Error(
+        `${link} exists but is not a symlink to ${target}. Merge its content into ${ROOT_FILE} (outside the canons block) or ${config.rulesDir}, remove it, and rerun.`,
+      );
+    links.push([link, target]);
+  }
+
+  // Directories and a write probe in each, undone if any of them fails.
+  const dirs = [
+    ".",
+    ...new Set([
+      ...[...canon.rules.keys()].map((f) => posix.dirname(managedRulePath(config, f))),
+      config.skillsDir,
+      ...links.map(([link]) => posix.dirname(link)),
+    ]),
+  ];
+  const created: string[] = [];
+  try {
+    for (const dir of dirs) {
+      const abs = resolve(root, dir);
+      const first = mkdirSync(abs, { recursive: true });
+      if (first) created.push(first);
+      const probe = resolve(abs, `.canons-probe-${process.pid}`);
+      writeFileSync(probe, "");
+      rmSync(probe);
+    }
+  } catch (error) {
+    for (const dir of created.reverse()) rmSync(dir, { recursive: true, force: true });
+    throw new Error(
+      `cannot write in this repository: ${(error as Error).message}. Nothing was changed. If a sandbox protects these paths (the Codex sandbox protects .agents/), run the command outside it.`,
+    );
+  }
+
   // Root file and block.
   const block = renderBlock(canon);
   const nextRoot = rootText
@@ -119,7 +167,6 @@ export function sync(root: string, options: SyncOptions = {}): string[] {
   for (const [file, text] of canon.rules) {
     const path = managedRulePath(config, file);
     const abs = resolve(root, path);
-    mkdirSync(dirname(abs), { recursive: true });
     if (!existsSync(abs) || readFileSync(abs, "utf8") !== text) {
       writeFileSync(abs, text);
       log.push(`wrote ${path}`);
@@ -142,23 +189,13 @@ export function sync(root: string, options: SyncOptions = {}): string[] {
   // Git does not track empty directories; without a placeholder a fresh clone
   // would get a dangling .claude/skills link.
   const skillsAbs = resolve(root, config.skillsDir);
-  mkdirSync(skillsAbs, { recursive: true });
   if (!readdirSync(skillsAbs).length) {
     writeFileSync(resolve(skillsAbs, ".gitkeep"), "");
     log.push(`created ${config.skillsDir}/.gitkeep`);
   }
 
-  // Client adapters (relative symlinks; never clobber a real file).
-  for (const [link, target] of clientLinks(config)) {
-    const abs = resolve(root, link);
-    const stat = lstatSync(abs, { throwIfNoEntry: false });
-    if (stat?.isSymbolicLink() && readlinkSync(abs) === target) continue;
-    if (stat)
-      throw new Error(
-        `${link} exists but is not a symlink to ${target}. Merge its content into ${ROOT_FILE} (outside the canons block) or ${config.rulesDir}, remove it, and rerun.`,
-      );
-    mkdirSync(dirname(abs), { recursive: true });
-    symlinkSync(target, abs);
+  for (const [link, target] of links) {
+    symlinkSync(target, resolve(root, link));
     log.push(`linked ${link} -> ${target}`);
   }
 
@@ -178,19 +215,24 @@ export function sync(root: string, options: SyncOptions = {}): string[] {
   return log;
 }
 
-export function init(
-  root: string,
-  locale = DEFAULT_CONFIG.locale,
-  options: SyncOptions = {},
-): string[] {
+export interface InitOptions extends SyncOptions {
+  locale?: string;
+  /** Defaults to `local` when the repository has a package.json, else `npx`. */
+  runner?: Runner;
+}
+
+/** Writes canons.json last, so a refused init can simply be rerun. */
+export function init(root: string, options: InitOptions = {}): string[] {
   const configPath = resolve(root, CONFIG_FILE);
   if (existsSync(configPath))
     throw new Error(`${CONFIG_FILE} already exists; run "canons sync"`);
-  // Validate the locale before writing anything.
-  loadCanon(locale, options.contentRoot ?? CONTENT_ROOT);
-  const config = { version: 1, locale, clients: DEFAULT_CONFIG.clients };
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  return [`created ${CONFIG_FILE}`, ...sync(root, options)];
+  const locale = options.locale ?? DEFAULT_CONFIG.locale;
+  const runner =
+    options.runner ?? (existsSync(resolve(root, "package.json")) ? "local" : "npx");
+  const declared = { version: 1, locale, clients: DEFAULT_CONFIG.clients, runner };
+  const log = apply(root, parseConfig(declared), options);
+  writeFileSync(configPath, `${JSON.stringify(declared, null, 2)}\n`);
+  return [...log, `created ${CONFIG_FILE} (runner: ${runner})`];
 }
 
 /** Used by check: lists repo-relative paths of files under a dir, recursively. */

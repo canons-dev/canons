@@ -1,0 +1,8 @@
+{
+  "name": "example-service",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@canons-dev/canons": "^0.1.0"
+  }
+}

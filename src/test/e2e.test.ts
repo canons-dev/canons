@@ -2,11 +2,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   cpSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   writeFileSync,
@@ -127,15 +129,59 @@ test("root budget, broken links, naming and copies instead of links", () => {
 test("init creates canons.json in the chosen locale; codex-only skips links", () => {
   const root = fixture();
   rmSync(join(root, "canons.json"));
-  init(root, "zh-CN");
+  init(root, { locale: "zh-CN" });
   assert.match(readFileSync(join(root, "AGENTS.md"), "utf8"), /locale=zh-CN/);
-  assert.throws(() => init(root, "en"), /already exists/);
+  assert.throws(() => init(root, { locale: "en" }), /already exists/);
 
   const codexOnly = fixture();
   writeFileSync(join(codexOnly, "canons.json"), JSON.stringify({ version: 1, clients: ["codex"] }));
   sync(codexOnly);
   assert.equal(lstatSync(join(codexOnly, "CLAUDE.md"), { throwIfNoEntry: false }), undefined);
   assert.deepEqual(check(codexOnly).errors, []);
+});
+
+test("init picks the npx runner without package.json; check warns on a local runner without the package", () => {
+  const root = mkdtempSync(join(tmpdir(), "canons-runner-"));
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  init(root);
+  const config = JSON.parse(readFileSync(join(root, "canons.json"), "utf8"));
+  assert.equal(config.runner, "npx");
+  const version = JSON.parse(readFileSync(resolve(PACKAGE_ROOT, "package.json"), "utf8")).version;
+  const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+  assert.ok(agents.includes(`\`npx -y @canons-dev/canons@${version} scopes`), "block names the pinned command");
+  assert.ok(!agents.includes("`npx canons"), "no local command left");
+  assert.deepEqual(check(root), { errors: [], warnings: [] });
+
+  writeFileSync(join(root, "canons.json"), JSON.stringify({ ...config, runner: "local" }));
+  sync(root);
+  assert.match(check(root).warnings.join("\n"), /runner is "local" but package.json does not list/);
+
+  const node = fixture();
+  rmSync(join(node, "canons.json"));
+  init(node);
+  assert.equal(JSON.parse(readFileSync(join(node, "canons.json"), "utf8")).runner, "local");
+  assert.deepEqual(check(node), { errors: [], warnings: [] });
+});
+
+test("a refused init or sync changes nothing", () => {
+  const root = mkdtempSync(join(tmpdir(), "canons-refuse-"));
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  writeFileSync(join(root, "CLAUDE.md"), "own notes\n");
+  assert.throws(() => init(root), /CLAUDE\.md exists but is not a symlink/);
+  assert.deepEqual(readdirSync(root).sort(), [".git", "CLAUDE.md"]);
+
+  rmSync(join(root, "CLAUDE.md"));
+  if (process.getuid?.() !== 0) {
+    chmodSync(root, 0o555);
+    try {
+      assert.throws(() => init(root), /cannot write in this repository.*Nothing was changed/s);
+    } finally {
+      chmodSync(root, 0o755);
+    }
+    assert.deepEqual(readdirSync(root), [".git"]);
+  }
+  init(root);
+  assert.deepEqual(check(root).errors, []);
 });
 
 test("breaking upgrades need --accept-major", () => {

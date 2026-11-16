@@ -21,11 +21,11 @@
 在这个仓库里安装或更新 canons（https://github.com/canons-dev/canons）。canons 把 coding agent 的指令集中在一处：AGENTS.md、.agents/rules/ 和 .agents/skills/。
 
 1. 运行 `git status`。如果有未提交的改动，列出来并先问我再继续。
-2. 确认有 Node 22 或更高版本。如果仓库里没有 package.json，先问我再创建。
-3. 运行 `npm install --save-dev @canons-dev/canons@latest`。
+2. 确认有 Node 22 或更高版本。
+3. 如果仓库里有 package.json，运行 `npm install --save-dev @canons-dev/canons@latest`。如果没有，不要新建：下面步骤里凡是写 `npx canons` 的地方，都改用 `npx -y @canons-dev/canons@latest`。
 4. 如果没有 canons.json，运行 `npx canons init --locale zh-CN`；否则运行 `npx canons sync`。
 5. 如果命令停下来：
-   - 因为破坏性升级：把 node_modules/@canons-dev/canons/doc/CHANGELOG.md 里新旧版本之间的条目给我看，我同意后再运行 `npx canons sync --accept-major`。
+   - 因为破坏性升级：把 node_modules/@canons-dev/canons/doc/CHANGELOG.md（没有本地安装时看 https://github.com/canons-dev/canons/blob/main/doc/CHANGELOG.md）里新旧版本之间的条目给我看，我同意后再运行 `npx canons sync --accept-major`。
    - 因为托管内容被手改：把改动给我看。除非我说可以，不要加 `--force`。
    - 因为 CLAUDE.md、.claude/rules 或 .claude/skills 是实体文件或目录：把内容移进 AGENTS.md（canons 区块之外）、.agents/rules/ 或 .agents/skills/，然后重跑。删除任何东西前先问我。
    - 因为沙箱不允许写 .agents/（Codex 的沙箱会保护这个目录）：请我批准在沙箱外运行该命令，或者由我自己运行。
@@ -44,7 +44,7 @@ npx canons init --locale zh-CN
 npx canons check
 ```
 
-包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。`init` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，为 Claude Code 建好软链接，并写出 `canons.lock.json`。这些文件都要提交。
+包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。没有 `package.json` 的仓库改为运行 `npx -y @canons-dev/canons@latest init --locale zh-CN`：`init` 会选用 `npx` runner，托管规则里写的是带确切版本号的命令（见下文 `runner`）。`init` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，为 Claude Code 建好软链接，并写出 `canons.lock.json`。这些文件都要提交。
 
 然后添加项目自己的规则：
 
@@ -69,8 +69,8 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 | 命令 | 作用 |
 | --- | --- |
-| `canons init [--locale <code>]` | 创建 `canons.json` 并执行 `sync`。 |
-| `canons sync [--accept-major] [--force]` | 更新托管区块、托管规则、客户端软链接和 lock。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。 |
+| `canons init [--locale <code>] [--runner local\|npx]` | 创建 `canons.json` 并执行 `sync`。`canons.json` 最后才写，被拒绝时不留下任何文件。 |
+| `canons sync [--accept-major] [--force]` | 更新托管区块、托管规则、客户端软链接和 lock。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。 |
 | `canons check [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。 |
 | `canons scopes [--changed] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。 |
 | `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |
@@ -84,6 +84,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
   "version": 1,
   "locale": "zh-CN",
   "clients": ["codex", "claude"],
+  "runner": "local",
   "rulesDir": ".agents/rules",
   "skillsDir": ".agents/skills",
   "budgetBytes": 24576,
@@ -91,6 +92,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 }
 ```
 
+- `runner` 决定托管规则让 agent 运行什么命令。`local`（有 `package.json` 时的默认值）写 `npx canons`，要求把包装成 dev dependency，缺了 `check` 会警告。`npx`（没有 `package.json` 时的默认值）写 `npx -y @canons-dev/canons@<版本>`，固定为最近一次运行 `sync` 的版本。
 - `budgetBytes` 只限制根 `AGENTS.md`（默认 24 KiB，最多 32 KiB），给嵌套的指令文件留出 Codex 能加载的空间。
 - `ruleNamePattern` 可选，用来约束项目自己的顶层规则文件名。
 - `presets` 和 `hooks` 留给后续版本，目前必须保持为空 / `false`。
@@ -99,7 +101,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 | 客户端 | 如何读到指令 |
 | --- | --- |
-| Codex | 原生从仓库根往下读到工作目录的各级 `AGENTS.md`，并读取 `.agents/skills/`。 |
+| Codex | 原生从仓库根往下读到工作目录的各级 `AGENTS.md`，并读取 `.agents/skills/`。交互式客户端启动前会要求你信任该目录。 |
 | Claude Code | `CLAUDE.md -> AGENTS.md`、`.claude/rules -> ../.agents/rules`、`.claude/skills -> ../.agents/skills`；规则按 `paths` 原生加载。 |
 | Cursor、GitHub Copilot | 原生读取 `AGENTS.md`。 |
 | Gemini CLI | 把 `context.fileName` 设为 `["AGENTS.md"]`。 |

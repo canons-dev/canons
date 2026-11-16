@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Runner } from "./config.ts";
 import { listMarkdown } from "./rules.ts";
 
 // The modules run from src/ in development and from out/ when installed; both
@@ -25,6 +26,21 @@ export function packageVersion(root = PACKAGE_ROOT): string {
   ).version;
 }
 
+export function packageName(root = PACKAGE_ROOT): string {
+  return (
+    JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
+      name: string;
+    }
+  ).name;
+}
+
+/** The command the managed rules tell agents to run, per runner. */
+export function runnerCommand(runner: Runner, root = PACKAGE_ROOT): string {
+  return runner === "npx"
+    ? `npx -y ${packageName(root)}@${packageVersion(root)}`
+    : "npx canons";
+}
+
 export function availableLocales(root = CONTENT_ROOT): string[] {
   return readdirSync(resolve(root, "canon/core/locales"), {
     withFileTypes: true,
@@ -43,8 +59,17 @@ export interface Canon {
   rules: Map<string, string>;
 }
 
-/** `root` is the directory holding `canon/` (src/ or out/). */
-export function loadCanon(locale: string, root = CONTENT_ROOT): Canon {
+/**
+ * `root` is the directory holding `canon/` (src/ or out/). Shipped content
+ * spells the command `npx canons`; other runners substitute their own.
+ */
+export function loadCanon(
+  locale: string,
+  root = CONTENT_ROOT,
+  runner: Runner = "local",
+): Canon {
+  const command = runnerCommand(runner, resolve(root, ".."));
+  const withRunner = (text: string) => text.replaceAll("`npx canons", `\`${command}`);
   const dir = resolve(root, "canon/core/locales", locale);
   if (!existsSync(dir))
     throw new Error(
@@ -54,11 +79,11 @@ export function loadCanon(locale: string, root = CONTENT_ROOT): Canon {
   const rulesDir = resolve(dir, "rules");
   if (existsSync(rulesDir))
     for (const file of listMarkdown(rulesDir))
-      rules.set(file, readFileSync(resolve(rulesDir, file), "utf8"));
+      rules.set(file, withRunner(readFileSync(resolve(rulesDir, file), "utf8")));
   return {
     version: packageVersion(resolve(root, "..")),
     locale,
-    block: readFileSync(resolve(dir, "AGENTS.block.md"), "utf8").trim(),
+    block: withRunner(readFileSync(resolve(dir, "AGENTS.block.md"), "utf8").trim()),
     rules,
   };
 }

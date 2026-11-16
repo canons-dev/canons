@@ -4,7 +4,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { check } from "./check.ts";
-import { findRoot, loadConfig } from "./config.ts";
+import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
 import { packageVersion } from "./content.ts";
 import { doctor } from "./doctor.ts";
 import {
@@ -18,7 +18,8 @@ import { init, sync } from "./sync.ts";
 const HELP = `canons ${packageVersion()}
 
 Usage:
-  canons init [--locale <code>]      create canons.json and run sync
+  canons init [--locale <code>] [--runner local|npx]
+                                     create canons.json and run sync
   canons sync [--accept-major] [--force]
                                      write the AGENTS.md block, managed rules, client links, lock
   canons check [--strict]            deterministic hygiene checks (for CI and pre-commit)
@@ -59,8 +60,12 @@ export function main(argv: string[], cwd = process.cwd()): number {
   switch (command) {
     case "init": {
       const locale = takeOption(args, "--locale");
+      const runner = takeOption(args, "--runner");
       assertFlags(args, []);
-      for (const line of init(root, locale)) console.log(line);
+      if (runner !== undefined && !(RUNNERS as readonly string[]).includes(runner))
+        throw new Error(`--runner must be one of: ${RUNNERS.join(", ")}`);
+      for (const line of init(root, { locale, runner: runner as Runner | undefined }))
+        console.log(line);
       console.log('done. Next: write project rules outside the canons block, then run "canons check".');
       return 0;
     }

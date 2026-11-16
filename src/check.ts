@@ -20,6 +20,7 @@ import {
   CONTENT_ROOT,
   extractBlock,
   loadCanon,
+  packageName,
   sha256,
 } from "./content.ts";
 import {
@@ -90,7 +91,7 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
   if (lock) {
     let canonBlockHash: string | undefined;
     try {
-      const canon = loadCanon(config.locale, options.contentRoot ?? CONTENT_ROOT);
+      const canon = loadCanon(config.locale, options.contentRoot ?? CONTENT_ROOT, config.runner);
       canonBlockHash = sha256(canon.block);
       if (lock.canons !== canon.version || lock.locale !== config.locale)
         errors.push(
@@ -116,6 +117,27 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
         if (!(path in lock.files))
           errors.push(`${path} is not managed by canons; move it to ${config.rulesDir}/`);
       }
+  }
+
+  // The local runner's `npx canons` only resolves when the package is installed.
+  if (config.runner === "local") {
+    const name = packageName();
+    const manifestPath = resolve(root, "package.json");
+    let manifest: Record<string, unknown> | undefined;
+    try {
+      manifest = existsSync(manifestPath)
+        ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>)
+        : undefined;
+    } catch {
+      manifest = undefined;
+    }
+    const declared = ["devDependencies", "dependencies"].some(
+      (key) => typeof manifest?.[key] === "object" && name in (manifest[key] as object),
+    );
+    if (manifest?.name !== name && !declared)
+      warnings.push(
+        `runner is "local" but package.json does not list ${name}, so \`npx canons\` will not resolve; run \`npm install --save-dev ${name}\`, or set "runner": "npx" in canons.json for a repository without package.json`,
+      );
   }
 
   // 2. Codex: AGENTS.override.md shadows AGENTS.md in its directory, and the
