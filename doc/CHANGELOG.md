@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 (2026-11-16)
+
+- Released through npm trusted publishing (OIDC). No changes to the CLI or rules.
+
 ## 0.1.0 (2026-11-16)
 
 - Published as `@canons-dev/canons`; the command is `canons`.
