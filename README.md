@@ -18,11 +18,12 @@ Teams that use more than one coding agent end up with `AGENTS.md`, `CLAUDE.md`, 
 Requires Node 22 or newer and a git repository.
 
 ```sh
+npm install --save-dev @canons-dev/canons
 npx canons init               # or: npx canons init --locale zh-CN
 npx canons check
 ```
 
-`init` creates `canons.json`, inserts the managed block into `AGENTS.md` (creating it if needed), writes the managed rules to `.agents/rules/canons/`, links the Claude Code entry points and writes `canons.lock.json`. Commit all of them.
+The package installs a `canons` command; install it as a dev dependency so that `npx canons`, which the managed rules tell agents to run, resolves to the pinned local copy. `init` creates `canons.json`, inserts the managed block into `AGENTS.md` (creating it if needed), writes the managed rules to `.agents/rules/canons/`, links the Claude Code entry points and writes `canons.lock.json`. Commit all of them.
 
 Then add your own rules:
 

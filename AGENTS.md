@@ -40,7 +40,7 @@ These apply to every coding agent working in this repository (Codex, Claude Code
 
 - Layout: all source lives in `src/` — code, tests (`src/test/`, fixtures in `src/test/fixtures/`), build script and rule content (`src/canon/`). Only repository-level config (`package.json`, `tsconfig*.json`, `canons.json` and the like) sits at the root. Documentation goes in `doc/`, except `README*.md` and `AGENTS.md`; GitHub community files (`CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`) go in `.github/` so GitHub still recognizes them. Build output is `out/` (git-ignored).
 - Development commands: `npm run typecheck`, `npm test`, `npm run build && node out/cli.js check`. Run all three before finishing a change.
-- In this repository run the CLI from source, `node src/cli.ts <command>`, wherever the canons block says `npx canons` (npx would fetch the published version instead).
+- In this repository run the CLI from source, `node src/cli.ts <command>`, wherever the canons block says `npx canons` (this repository has no installed copy of the package).
 - Releasing: bump `version` in `package.json`, run `node src/cli.ts sync --accept-major` so this repository's own block and lock follow, update `doc/CHANGELOG.md`, then tag `v<version>`; `.github/workflows/release.yml` publishes.
 - Zero runtime dependencies. Checks stay deterministic: no network, no AI, no clock.
 - Shipped content (everything under `src/` except the `*.test.ts` files, plus the READMEs) stays project-neutral; `src/test/locales.test.ts` enforces a deny-list.

@@ -18,11 +18,12 @@
 需要 Node 22 及以上，并且在 git 仓库里运行。
 
 ```sh
+npm install --save-dev @canons-dev/canons
 npx canons init --locale zh-CN
 npx canons check
 ```
 
-`init` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，为 Claude Code 建好软链接，并写出 `canons.lock.json`。这些文件都要提交。
+包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。`init` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，为 Claude Code 建好软链接，并写出 `canons.lock.json`。这些文件都要提交。
 
 然后添加项目自己的规则：
 
