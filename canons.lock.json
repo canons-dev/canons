@@ -1,10 +1,10 @@
 {
   "lockfileVersion": 1,
-  "canons": "0.1.3",
+  "canons": "0.1.4",
   "locale": "en",
-  "block": "76260fef3a357e051e6038211919ea5317fe03b1f9928851fe6fe0cbd2db9188",
+  "block": "fb514a78eb5edb7c8a6b65f2be725d9f567319a278dbc5bd418fe6368b1f118a",
   "files": {
-    ".agents/rules/canons/layout.md": "c67c4d9906c782c9f50c2328cdd4927a20fa076924f2ffaaa228fadb280c8a6c",
+    ".agents/rules/canons/layout.md": "88a2ff12dd145c1f85d5a9d66cad67d987bb68fc160d6cc78206bc1c15ffb926",
     ".agents/rules/canons/vendor.md": "970bad990199c7269f91ace4296120688eecb7b1c622069fe1f8ad71983782bb"
   }
 }

@@ -104,6 +104,8 @@ function realScopePath(root: string, path: string): string {
 export interface ScopeRule {
   file: string;
   paths: string[];
+  /** Code symbols the rule pins; `verify` requires each to appear in the source directories. */
+  anchors: string[];
 }
 
 /** Lists `.md` files under `dir`, recursively, as sorted relative paths. */
@@ -128,13 +130,15 @@ export function loadScopeRules(root: string, rulesDir: string): ScopeRule[] {
   return files.map((file) => {
     const source = readFileSync(resolve(root, rulesDir, file), "utf8");
     let paths: string[];
+    let anchors: string[];
     try {
       paths = parseListKey(source, "paths");
       for (const path of paths) globToRe(path);
+      anchors = parseListKey(source, "anchors");
     } catch (error) {
       throw new Error(`${rulesDir}/${file}: ${(error as Error).message}`);
     }
-    return { file: `${rulesDir}/${file}`, paths };
+    return { file: `${rulesDir}/${file}`, paths, anchors };
   });
 }
 

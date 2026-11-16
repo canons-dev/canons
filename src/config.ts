@@ -27,6 +27,8 @@ export interface CanonsConfig {
   runner: Runner;
   rulesDir: string;
   skillsDir: string;
+  /** Where rule `anchors` must still appear (repo-relative directories). */
+  sourceDirs: string[];
   /** Byte budget for the root AGENTS.md alone. */
   budgetBytes: number;
   /** Optional naming rule for the project's own top-level rule files (basename without .md). */
@@ -42,6 +44,7 @@ export const DEFAULT_CONFIG: CanonsConfig = {
   runner: "local",
   rulesDir: ".agents/rules",
   skillsDir: ".agents/skills",
+  sourceDirs: ["src"],
   budgetBytes: 24 * 1024,
   presets: [],
   hooks: false,
@@ -55,6 +58,7 @@ const KEYS = new Set([
   "runner",
   "rulesDir",
   "skillsDir",
+  "sourceDirs",
   "budgetBytes",
   "ruleNamePattern",
   "presets",
@@ -91,6 +95,15 @@ export function parseConfig(raw: unknown): CanonsConfig {
     )
       fail(`${key} must be a repo-relative path`);
   }
+  if (
+    !Array.isArray(config.sourceDirs) ||
+    !config.sourceDirs.length ||
+    config.sourceDirs.some(
+      (dir) =>
+        typeof dir !== "string" || !dir || dir.startsWith("/") || dir.split("/").includes(".."),
+    )
+  )
+    fail("sourceDirs must be a non-empty list of repo-relative directories");
   if (!Number.isInteger(config.budgetBytes) || config.budgetBytes <= 0)
     fail("budgetBytes must be a positive integer");
   if (config.budgetBytes > CODEX_CHAIN_MAX_BYTES)
@@ -119,7 +132,7 @@ export function parseConfig(raw: unknown): CanonsConfig {
 export function loadConfig(root: string): CanonsConfig {
   const file = resolve(root, CONFIG_FILE);
   if (!existsSync(file))
-    throw new Error(`${CONFIG_FILE} not found in ${root}; run "canons init"`);
+    throw new Error(`${CONFIG_FILE} not found in ${root}; run "canons create"`);
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(file, "utf8"));

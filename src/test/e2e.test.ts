@@ -16,7 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { check } from "../check.ts";
+import { verify } from "../verify.ts";
 import { main } from "../cli.ts";
 import { PACKAGE_ROOT } from "../content.ts";
 import {
@@ -25,7 +25,7 @@ import {
   loadScopeRules,
   matchScopeRules,
 } from "../rules.ts";
-import { init, sync } from "../sync.ts";
+import { create, update } from "../update.ts";
 
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "canons-e2e-"));
@@ -36,13 +36,13 @@ function fixture(): string {
 
 function synced(): string {
   const root = fixture();
-  sync(root);
+  update(root);
   return root;
 }
 
-const errorsOf = (root: string) => check(root).errors.join("\n");
+const errorsOf = (root: string) => verify(root).errors.join("\n");
 
-test("sync writes block, managed rules, links and lock; check passes", () => {
+test("update writes block, managed rules, links and lock; verify passes", () => {
   const root = synced();
   const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
   assert.match(agents, /^# Example service\n\n<!-- canons:begin version=/);
@@ -57,8 +57,8 @@ test("sync writes block, managed rules, links and lock; check passes", () => {
     ".agents/rules/canons/layout.md",
     ".agents/rules/canons/vendor.md",
   ]);
-  assert.deepEqual(check(root), { errors: [], warnings: [] });
-  assert.deepEqual(sync(root), [], "second sync is a no-op");
+  assert.deepEqual(verify(root), { errors: [], warnings: [] });
+  assert.deepEqual(update(root), [], "second update is a no-op");
 });
 
 test("scopes: project and managed rules, recursive, --changed without HEAD", () => {
@@ -74,24 +74,24 @@ test("scopes: project and managed rules, recursive, --changed without HEAD", () 
   assert.deepEqual(dir, ["src/api/hello.ts"]);
 });
 
-test("hand edits to managed content are caught by check and refused by sync", () => {
+test("hand edits to managed content are caught by verify and refused by update", () => {
   const root = synced();
   const agents = join(root, "AGENTS.md");
   writeFileSync(agents, readFileSync(agents, "utf8").replace("**C8**", "**C8** (edited)"));
   assert.match(errorsOf(root), /edited by hand/);
-  assert.throws(() => sync(root), /local edits/);
-  sync(root, { force: true });
-  assert.deepEqual(check(root).errors, []);
+  assert.throws(() => update(root), /local edits/);
+  update(root, { force: true });
+  assert.deepEqual(verify(root).errors, []);
 
   const rule = join(root, ".agents/rules/canons/vendor.md");
   writeFileSync(rule, `${readFileSync(rule, "utf8")}\n- extra\n`);
   assert.match(errorsOf(root), /vendor\.md was edited by hand/);
-  assert.throws(() => sync(root), /local edits/);
+  assert.throws(() => update(root), /local edits/);
 
-  sync(root, { force: true });
+  update(root, { force: true });
   writeFileSync(join(root, ".agents/rules/canons/mine.md"), "---\nx: 1\n---\n");
   assert.match(errorsOf(root), /mine\.md is not managed/);
-  assert.throws(() => sync(root), /not managed by canons/);
+  assert.throws(() => update(root), /not managed by canons/);
 });
 
 test("Codex hazards: AGENTS.override.md and the 32 KiB chain", () => {
@@ -118,70 +118,85 @@ test("root budget, broken links, naming and copies instead of links", () => {
   writeFileSync(join(root, ".agents/rules/apis.md"), '---\npaths:\n  - "src/api/**"\n---\n\nSee [docs](docs/api.md).\n');
   assert.match(errorsOf(root), /broken link docs\/api\.md/);
   writeFileSync(join(root, ".agents/rules/apis.md"), '---\npaths:\n  - "src/nothing/**"\n---\n');
-  assert.match(check(root).warnings.join("\n"), /matches no file under src\/nothing/);
+  assert.match(verify(root).warnings.join("\n"), /matches no file under src\/nothing/);
 
   rmSync(join(root, "CLAUDE.md"));
   writeFileSync(join(root, "CLAUDE.md"), "copy\n");
   assert.match(errorsOf(root), /CLAUDE\.md must be a symlink/);
-  assert.throws(() => sync(root), /exists but is not a symlink/);
+  assert.throws(() => update(root), /exists but is not a symlink/);
 });
 
-test("init creates canons.json in the chosen locale; codex-only skips links", () => {
+test("create creates canons.json in the chosen locale; codex-only skips links", () => {
   const root = fixture();
   rmSync(join(root, "canons.json"));
-  init(root, { locale: "zh-CN" });
+  create(root, { locale: "zh-CN" });
   assert.match(readFileSync(join(root, "AGENTS.md"), "utf8"), /locale=zh-CN/);
-  assert.throws(() => init(root, { locale: "en" }), /already exists/);
+  assert.throws(() => create(root, { locale: "en" }), /already exists/);
 
   const codexOnly = fixture();
   writeFileSync(join(codexOnly, "canons.json"), JSON.stringify({ version: 1, clients: ["codex"] }));
-  sync(codexOnly);
+  update(codexOnly);
   assert.equal(lstatSync(join(codexOnly, "CLAUDE.md"), { throwIfNoEntry: false }), undefined);
-  assert.deepEqual(check(codexOnly).errors, []);
+  assert.deepEqual(verify(codexOnly).errors, []);
 });
 
-test("init picks the npx runner without package.json; check warns on a local runner without the package", () => {
+test("create picks the npx runner without package.json; verify warns on a local runner without the package", () => {
   const root = mkdtempSync(join(tmpdir(), "canons-runner-"));
   execFileSync("git", ["init", "-q"], { cwd: root });
-  init(root);
+  create(root);
   const config = JSON.parse(readFileSync(join(root, "canons.json"), "utf8"));
   assert.equal(config.runner, "npx");
   const version = JSON.parse(readFileSync(resolve(PACKAGE_ROOT, "package.json"), "utf8")).version;
   const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
   assert.ok(agents.includes(`\`npx -y @canons-dev/canons@${version} scopes`), "block names the pinned command");
   assert.ok(!agents.includes("`npx canons"), "no local command left");
-  assert.deepEqual(check(root), { errors: [], warnings: [] });
+  assert.deepEqual(verify(root), { errors: [], warnings: [] });
 
   writeFileSync(join(root, "canons.json"), JSON.stringify({ ...config, runner: "local" }));
-  sync(root);
-  assert.match(check(root).warnings.join("\n"), /runner is "local" but package.json does not list/);
+  update(root);
+  assert.match(verify(root).warnings.join("\n"), /runner is "local" but package.json does not list/);
 
   const node = fixture();
   rmSync(join(node, "canons.json"));
-  init(node);
+  create(node);
   assert.equal(JSON.parse(readFileSync(join(node, "canons.json"), "utf8")).runner, "local");
-  assert.deepEqual(check(node), { errors: [], warnings: [] });
+  assert.deepEqual(verify(node), { errors: [], warnings: [] });
 });
 
-test("a refused init or sync changes nothing", () => {
+test("a refused create or update changes nothing", () => {
   const root = mkdtempSync(join(tmpdir(), "canons-refuse-"));
   execFileSync("git", ["init", "-q"], { cwd: root });
   writeFileSync(join(root, "CLAUDE.md"), "own notes\n");
-  assert.throws(() => init(root), /CLAUDE\.md exists but is not a symlink/);
+  assert.throws(() => create(root), /CLAUDE\.md exists but is not a symlink/);
   assert.deepEqual(readdirSync(root).sort(), [".git", "CLAUDE.md"]);
 
   rmSync(join(root, "CLAUDE.md"));
   if (process.getuid?.() !== 0) {
     chmodSync(root, 0o555);
     try {
-      assert.throws(() => init(root), /cannot write in this repository.*Nothing was changed/s);
+      assert.throws(() => create(root), /cannot write in this repository.*Nothing was changed/s);
     } finally {
       chmodSync(root, 0o755);
     }
     assert.deepEqual(readdirSync(root), [".git"]);
   }
-  init(root);
-  assert.deepEqual(check(root).errors, []);
+  create(root);
+  assert.deepEqual(verify(root).errors, []);
+});
+
+test("anchors must still appear in the source directories", () => {
+  const root = synced();
+  assert.deepEqual(verify(root).errors, []);
+  const rule = join(root, ".agents/rules/apis.md");
+  writeFileSync(rule, readFileSync(rule, "utf8").replace("  - hello", "  - hello\n  - goodbye"));
+  assert.match(errorsOf(root), /apis\.md: anchor "goodbye" no longer appears in src/);
+  assert.doesNotMatch(errorsOf(root), /anchor "hello"/);
+
+  const config = join(root, "canons.json");
+  writeFileSync(config, JSON.stringify({ version: 1, sourceDirs: ["lib"] }));
+  assert.match(errorsOf(root), /declares anchors, but sourceDirs \(lib\) holds no files/);
+  writeFileSync(config, JSON.stringify({ version: 1, sourceDirs: ["../x"] }));
+  assert.match(errorsOf(root), /sourceDirs must be a non-empty list/);
 });
 
 test("breaking upgrades need --accept-major", () => {
@@ -189,9 +204,28 @@ test("breaking upgrades need --accept-major", () => {
   const lockPath = join(root, "canons.lock.json");
   const lock = JSON.parse(readFileSync(lockPath, "utf8"));
   writeFileSync(lockPath, JSON.stringify({ ...lock, canons: "0.0.1" }));
-  assert.throws(() => sync(root), /breaking upgrade/);
-  sync(root, { acceptMajor: true });
-  assert.deepEqual(check(root).errors, []);
+  assert.throws(() => update(root), /breaking upgrade/);
+  update(root, { acceptMajor: true });
+  assert.deepEqual(verify(root).errors, []);
+});
+
+test("cli: old command names point at the new ones", () => {
+  const root = synced();
+  assert.throws(() => main(["sync"], root), /"sync" is now "update"/);
+  assert.throws(() => main(["init"], root), /"init" is now "create"/);
+  assert.throws(() => main(["check"], root), /"check" is now "verify"/);
+});
+
+test("create writes the project settings skeleton in the chosen locale", () => {
+  const en = mkdtempSync(join(tmpdir(), "canons-settings-"));
+  execFileSync("git", ["init", "-q"], { cwd: en });
+  create(en);
+  const text = readFileSync(join(en, "AGENTS.md"), "utf8");
+  assert.match(text, /## Project settings\n[\s\S]*UI language:[\s\S]*## Project rules/);
+  const zh = mkdtempSync(join(tmpdir(), "canons-settings-"));
+  execFileSync("git", ["init", "-q"], { cwd: zh });
+  create(zh, { locale: "zh-CN" });
+  assert.match(readFileSync(join(zh, "AGENTS.md"), "utf8"), /## 项目设定\n[\s\S]*UI 语言：/);
 });
 
 test("cli exit codes", () => {
@@ -199,11 +233,11 @@ test("cli exit codes", () => {
   const log = console.log;
   console.log = () => {};
   try {
-    assert.equal(main(["check"], root), 0);
+    assert.equal(main(["verify"], root), 0);
     writeFileSync(join(root, "AGENTS.override.md"), "x\n");
-    assert.equal(main(["check"], root), 1);
+    assert.equal(main(["verify"], root), 1);
     assert.equal(main(["scopes", "src/api/hello.ts"], root), 0);
-    assert.throws(() => main(["check", "--nope"], root), /unknown option/);
+    assert.throws(() => main(["verify", "--nope"], root), /unknown option/);
   } finally {
     console.log = log;
   }

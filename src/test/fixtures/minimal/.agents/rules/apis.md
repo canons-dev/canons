@@ -1,6 +1,8 @@
 ---
 paths:
   - "src/api/**"
+anchors:
+  - hello
 ---
 
 # API handlers

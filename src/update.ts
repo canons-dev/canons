@@ -1,4 +1,4 @@
-// `canons init` / `canons sync`: write the managed block, managed rules,
+// `canons create` / `canons update`: write the managed block, managed rules,
 // client adapters and the lock. Never overwrites local edits silently.
 import {
   existsSync,
@@ -37,16 +37,11 @@ import {
 } from "./content.ts";
 import { listMarkdown } from "./rules.ts";
 
-export interface SyncOptions {
+export interface UpdateOptions {
   acceptMajor?: boolean;
   force?: boolean;
   contentRoot?: string;
 }
-
-const PROJECT_TEMPLATE = `## Project rules
-
-<!-- Project-specific red lines, stack, naming and verification commands go here, outside the canons block. -->
-`;
 
 export function readLock(root: string): Lock | undefined {
   const file = resolve(root, LOCK_FILE);
@@ -68,7 +63,7 @@ export function managedRulePath(config: CanonsConfig, file: string): string {
   return `${config.rulesDir}/${MANAGED_SUBDIR}/${file}`;
 }
 
-export function sync(root: string, options: SyncOptions = {}): string[] {
+export function update(root: string, options: UpdateOptions = {}): string[] {
   return apply(root, loadConfig(root), options);
 }
 
@@ -77,7 +72,7 @@ export function sync(root: string, options: SyncOptions = {}): string[] {
  * edits, client files in the way, unwritable directories) are found before
  * the first file is written, so a refused run leaves the repository as it was.
  */
-function apply(root: string, config: CanonsConfig, options: SyncOptions): string[] {
+function apply(root: string, config: CanonsConfig, options: UpdateOptions): string[] {
   const log: string[] = [];
   const canon = loadCanon(config.locale, options.contentRoot ?? CONTENT_ROOT, config.runner);
   const lock = readLock(root);
@@ -156,7 +151,7 @@ function apply(root: string, config: CanonsConfig, options: SyncOptions): string
   const block = renderBlock(canon);
   const nextRoot = rootText
     ? upsertBlock(rootText, block)
-    : `# AGENTS.md\n\n${block}\n\n${PROJECT_TEMPLATE}`;
+    : `# AGENTS.md\n\n${block}\n\n${canon.project}`;
   if (nextRoot !== rootText.replace(/\r\n/g, "\n")) {
     writeFileSync(rootPath, nextRoot);
     log.push(`${rootText ? "updated" : "created"} ${ROOT_FILE}`);
@@ -215,17 +210,17 @@ function apply(root: string, config: CanonsConfig, options: SyncOptions): string
   return log;
 }
 
-export interface InitOptions extends SyncOptions {
+export interface CreateOptions extends UpdateOptions {
   locale?: string;
   /** Defaults to `local` when the repository has a package.json, else `npx`. */
   runner?: Runner;
 }
 
-/** Writes canons.json last, so a refused init can simply be rerun. */
-export function init(root: string, options: InitOptions = {}): string[] {
+/** Writes canons.json last, so a refused create can simply be rerun. */
+export function create(root: string, options: CreateOptions = {}): string[] {
   const configPath = resolve(root, CONFIG_FILE);
   if (existsSync(configPath))
-    throw new Error(`${CONFIG_FILE} already exists; run "canons sync"`);
+    throw new Error(`${CONFIG_FILE} already exists; run "canons update"`);
   const locale = options.locale ?? DEFAULT_CONFIG.locale;
   const runner =
     options.runner ?? (existsSync(resolve(root, "package.json")) ? "local" : "npx");
@@ -235,7 +230,7 @@ export function init(root: string, options: InitOptions = {}): string[] {
   return [...log, `created ${CONFIG_FILE} (runner: ${runner})`];
 }
 
-/** Used by check: lists repo-relative paths of files under a dir, recursively. */
+/** Used by verify: lists repo-relative paths of files under a dir, recursively. */
 export function filesUnder(root: string, dir: string): string[] {
   const abs = resolve(root, dir);
   if (!existsSync(abs)) return [];

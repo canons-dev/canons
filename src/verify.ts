@@ -1,4 +1,4 @@
-// `canons check`: deterministic hygiene checks. Errors fail the run; warnings
+// `canons verify`: deterministic hygiene checks. Errors fail the run; warnings
 // fail only with --strict. No network, no AI.
 import {
   existsSync,
@@ -27,29 +27,69 @@ import {
   globToRe,
   listMarkdown,
   loadScopeRules,
+  type ScopeRule,
   repoFiles,
   staticPrefix,
 } from "./rules.ts";
-import { clientLinks, managedRulePath, readLock } from "./sync.ts";
+import { clientLinks, managedRulePath, readLock } from "./update.ts";
 
-export interface CheckResult {
+export interface VerifyResult {
   errors: string[];
   warnings: string[];
 }
 
-export interface CheckOptions {
+export interface VerifyOptions {
   contentRoot?: string;
+}
+
+/**
+ * Each anchor must appear as a whole word in a non-ignored, non-Markdown file under
+ * `sourceDirs`. Comments count; the point is to catch renames and deletions.
+ */
+function anchorErrors(
+  root: string,
+  config: CanonsConfig,
+  files: string[],
+  rules: ScopeRule[],
+): string[] {
+  const pinned = rules.filter((rule) => rule.anchors.length);
+  if (!pinned.length) return [];
+  const prefixes = config.sourceDirs.map((dir) => `${dir.replace(/\/+$/, "")}/`);
+  const sources = files.filter(
+    (f) => prefixes.some((p) => f.startsWith(p)) && !f.endsWith(".md"),
+  );
+  const where = config.sourceDirs.join(", ");
+  if (!sources.length)
+    return pinned.map(
+      (rule) => `${rule.file}: declares anchors, but sourceDirs (${where}) holds no files`,
+    );
+  const text = sources
+    .map((f) => {
+      const abs = resolve(root, f);
+      const size = statSync(abs, { throwIfNoEntry: false })?.size ?? 0;
+      return size && size <= 2 * 1024 * 1024 ? readFileSync(abs, "utf8") : "";
+    })
+    .join("\n");
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const errors: string[] = [];
+  for (const rule of pinned)
+    for (const anchor of rule.anchors)
+      if (!new RegExp(`(?<![\\w$])${escape(anchor)}(?![\\w$])`).test(text))
+        errors.push(
+          `${rule.file}: anchor "${anchor}" no longer appears in ${where}; update the rule together with the rename or removal`,
+        );
+  return errors;
 }
 
 function listFiles(root: string): string[] {
   try {
     return repoFiles(root);
   } catch {
-    throw new Error("canons check must run inside a git repository");
+    throw new Error("canons verify must run inside a git repository");
   }
 }
 
-export function check(root: string, options: CheckOptions = {}): CheckResult {
+export function verify(root: string, options: VerifyOptions = {}): VerifyResult {
   const errors: string[] = [];
   const warnings: string[] = [];
   let config: CanonsConfig;
@@ -64,7 +104,7 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
   // 1. Root file, managed block, lock.
   const rootPath = resolve(root, ROOT_FILE);
   const lock = readLock(root);
-  if (!lock) errors.push(`canons.lock.json is missing; run "canons sync"`);
+  if (!lock) errors.push(`canons.lock.json is missing; run "canons update"`);
   if (!existsSync(rootPath)) errors.push(`${ROOT_FILE} is missing`);
   else {
     const text = readFileSync(rootPath, "utf8");
@@ -75,14 +115,14 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
       );
     try {
       const block = extractBlock(text);
-      if (!block) errors.push(`${ROOT_FILE} has no canons block; run "canons sync"`);
+      if (!block) errors.push(`${ROOT_FILE} has no canons block; run "canons update"`);
       else {
         if (sha256(block.body) !== block.attrs.sha256)
           errors.push(
             `${ROOT_FILE}: the canons block was edited by hand; move the change outside the block, or propose it upstream`,
           );
         if (lock && block.attrs.sha256 !== lock.block)
-          errors.push(`${ROOT_FILE}: the canons block does not match canons.lock.json; run "canons sync"`);
+          errors.push(`${ROOT_FILE}: the canons block does not match canons.lock.json; run "canons update"`);
       }
     } catch (error) {
       errors.push((error as Error).message);
@@ -95,16 +135,16 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
       canonBlockHash = sha256(canon.block);
       if (lock.canons !== canon.version || lock.locale !== config.locale)
         errors.push(
-          `canons.lock.json is for canons ${lock.canons} (${lock.locale}) but ${canon.version} (${config.locale}) is installed; run "canons sync"`,
+          `canons.lock.json is for canons ${lock.canons} (${lock.locale}) but ${canon.version} (${config.locale}) is installed; run "canons update"`,
         );
       else if (canonBlockHash !== lock.block)
-        errors.push(`canons.lock.json does not match the installed canons; run "canons sync"`);
+        errors.push(`canons.lock.json does not match the installed canons; run "canons update"`);
     } catch (error) {
       errors.push((error as Error).message);
     }
     for (const [path, hash] of Object.entries(lock.files)) {
       const abs = resolve(root, path);
-      if (!existsSync(abs)) errors.push(`${path} is missing; run "canons sync"`);
+      if (!existsSync(abs)) errors.push(`${path} is missing; run "canons update"`);
       else if (sha256(readFileSync(abs, "utf8")) !== hash)
         errors.push(
           `${path} was edited by hand; put project rules outside ${config.rulesDir}/${MANAGED_SUBDIR}/`,
@@ -177,7 +217,7 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
   for (const [link, target] of clientLinks(config)) {
     const abs = resolve(root, link);
     const stat = lstatSync(abs, { throwIfNoEntry: false });
-    if (!stat) errors.push(`${link} is missing; run "canons sync"`);
+    if (!stat) errors.push(`${link} is missing; run "canons update"`);
     else if (!stat.isSymbolicLink())
       errors.push(`${link} must be a symlink to ${target}, not a copy`);
     else if (readlinkSync(abs) !== target)
@@ -191,6 +231,7 @@ export function check(root: string, options: CheckOptions = {}): CheckResult {
   else {
     try {
       const rules = loadScopeRules(root, config.rulesDir);
+      errors.push(...anchorErrors(root, config, files, rules));
       const managedPrefix = `${config.rulesDir}/${MANAGED_SUBDIR}/`;
       // Managed rules are generic and may name files a project does not have.
       for (const rule of rules.filter((r) => !r.file.startsWith(managedPrefix)))

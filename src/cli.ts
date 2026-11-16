@@ -3,7 +3,7 @@
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { check } from "./check.ts";
+import { verify } from "./verify.ts";
 import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
 import { packageVersion } from "./content.ts";
 import { doctor } from "./doctor.ts";
@@ -13,22 +13,26 @@ import {
   loadScopeRules,
   matchScopeRules,
 } from "./rules.ts";
-import { init, sync } from "./sync.ts";
+import { create, update } from "./update.ts";
 
 const HELP = `canons ${packageVersion()}
 
 Usage:
-  canons init [--locale <code>] [--runner local|npx]
-                                     create canons.json and run sync
-  canons sync [--accept-major] [--force]
+  canons create [--locale <code>] [--runner local|npx]
+                                     write canons.json and run update
+  canons update [--accept-major] [--force]
                                      write the AGENTS.md block, managed rules, client links, lock
-  canons check [--strict]            deterministic hygiene checks (for CI and pre-commit)
+                                     from the installed version (it does not upgrade the package)
+  canons verify [--strict]           deterministic hygiene checks (for CI and pre-commit)
   canons scopes [--changed] [--json] <file-or-dir>...
                                      list the rules that apply to the given paths
   canons doctor                      environment diagnostics with fix hints
   canons --version | --help
 
 A rule with no match does not mean "no constraints": the root AGENTS.md still applies.`;
+
+/** Command names before every command had six letters; kept only to point at the new name. */
+const RENAMED: Record<string, string> = { init: "create", sync: "update", check: "verify" };
 
 function takeOption(args: string[], name: string): string | undefined {
   const at = args.indexOf(name);
@@ -58,20 +62,20 @@ export function main(argv: string[], cwd = process.cwd()): number {
   }
   const root = findRoot(cwd);
   switch (command) {
-    case "init": {
+    case "create": {
       const locale = takeOption(args, "--locale");
       const runner = takeOption(args, "--runner");
       assertFlags(args, []);
       if (runner !== undefined && !(RUNNERS as readonly string[]).includes(runner))
         throw new Error(`--runner must be one of: ${RUNNERS.join(", ")}`);
-      for (const line of init(root, { locale, runner: runner as Runner | undefined }))
+      for (const line of create(root, { locale, runner: runner as Runner | undefined }))
         console.log(line);
-      console.log('done. Next: write project rules outside the canons block, then run "canons check".');
+      console.log('done. Next: write project rules outside the canons block, then run "canons verify".');
       return 0;
     }
-    case "sync": {
+    case "update": {
       assertFlags(args, ["--accept-major", "--force"]);
-      const log = sync(root, {
+      const log = update(root, {
         acceptMajor: args.includes("--accept-major"),
         force: args.includes("--force"),
       });
@@ -79,16 +83,16 @@ export function main(argv: string[], cwd = process.cwd()): number {
       if (!log.length) console.log("already up to date");
       return 0;
     }
-    case "check": {
+    case "verify": {
       assertFlags(args, ["--strict"]);
-      const { errors, warnings } = check(root);
+      const { errors, warnings } = verify(root);
       for (const e of errors) console.log(`error  ${e}`);
       for (const w of warnings) console.log(`warn   ${w}`);
       const failed = errors.length > 0 || (args.includes("--strict") && warnings.length > 0);
       console.log(
         failed
-          ? `canons check failed: ${errors.length} error(s), ${warnings.length} warning(s)`
-          : `canons check passed${warnings.length ? ` with ${warnings.length} warning(s)` : ""}`,
+          ? `canons verify failed: ${errors.length} error(s), ${warnings.length} warning(s)`
+          : `canons verify passed${warnings.length ? ` with ${warnings.length} warning(s)` : ""}`,
       );
       return failed ? 1 : 0;
     }
@@ -126,6 +130,8 @@ export function main(argv: string[], cwd = process.cwd()): number {
       for (const line of doctor(root)) console.log(line);
       return 0;
     default:
+      if (command in RENAMED)
+        throw new Error(`"${command}" is now "${RENAMED[command]}"; see canons --help`);
       throw new Error(`unknown command "${command}"; see canons --help`);
   }
 }

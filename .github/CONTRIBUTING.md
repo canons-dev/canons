@@ -8,7 +8,7 @@ Thanks for helping. canons is small on purpose; please open an issue before larg
 npm install
 npm run typecheck
 npm test
-npm run build && node out/cli.js check
+npm run build && node out/cli.js verify
 ```
 
 Node 22 or newer. Tests run the TypeScript sources directly with Node's type stripping; the published package ships compiled JavaScript because Node does not strip types inside `node_modules`.

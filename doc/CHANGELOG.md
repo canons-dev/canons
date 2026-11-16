@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.4 (2026-11-16)
+
+This release changes the managed rules and renames commands, but is published as a patch, so `update` applies it without `--accept-major`. Review the new rules after upgrading.
+
+- Commands renamed so every command has six letters: `init` → `create`, `sync` → `update`, `check` → `verify`. The old names stop with a message naming the new one.
+- New managed rules: C16 language settings (UI language confirmed with the developer and recorded in `AGENTS.md`; developer language recorded there, else the system language), C17 directory layout (recorded in `AGENTS.md`, else `src/`, `doc/`, `tmp/` and other three-letter names), C18 naming after neighbours (length first), C19 call sites and sync points, C20 other repositories are read-only, C21 deliberate non-goals. C5 adds a shared lessons file; C7 follows the recorded temporary directory. C20 joins the clauses projects may tighten but not relax.
+- `create` writes a "Project settings" section into a new `AGENTS.md`, in the chosen locale.
+- Rule frontmatter accepts `anchors`: code symbols the rule pins. `verify` fails when one no longer appears in `sourceDirs` (new `canons.json` key, default `["src"]`).
+
 ## 0.1.3 (2026-11-16)
 
 - `runner` in `canons.json`: `local` (`npx canons`, needs the dev dependency) or `npx` (`npx -y @canons-dev/canons@<version>`, no package.json needed). `init` picks `npx` when the repository has no package.json; `check` warns when the local runner's package is missing.
