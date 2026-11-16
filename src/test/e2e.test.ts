@@ -117,6 +117,15 @@ test("root budget, broken links, naming and copies instead of links", () => {
   writeFileSync(config, JSON.stringify({ version: 1 }));
   writeFileSync(join(root, ".agents/rules/apis.md"), '---\npaths:\n  - "src/api/**"\n---\n\nSee [docs](docs/api.md).\n');
   assert.match(errorsOf(root), /broken link docs\/api\.md/);
+  mkdirSync(join(root, "src/app/(app)/shell"), { recursive: true });
+  writeFileSync(join(root, "src/app/(app)/shell/page.tsx"), "export {};\n");
+  writeFileSync(
+    join(root, ".agents/rules/apis.md"),
+    '---\npaths:\n  - "src/api/**"\n---\n\nSee [page](<../../src/app/(app)/shell/page.tsx>), [same](../../src/app/(app)/shell/page.tsx "title") and [gone](../../src/app/(app)/nope.tsx).\n',
+  );
+  const linkErrors = errorsOf(root);
+  assert.match(linkErrors, /broken link \.\.\/\.\.\/src\/app\/\(app\)\/nope\.tsx/);
+  assert.doesNotMatch(linkErrors, /shell\/page\.tsx/);
   writeFileSync(join(root, ".agents/rules/apis.md"), '---\npaths:\n  - "src/nothing/**"\n---\n');
   assert.match(verify(root).warnings.join("\n"), /matches no file under src\/nothing/);
 

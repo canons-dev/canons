@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.5 (2026-11-16)
+
+- `verify` resolves rule links whose path holds parentheses, such as framework route groups (`../../src/app/(app)/page.tsx`, bare or in `<...>`), and links with a title.
+
 ## 0.1.4 (2026-11-16)
 
 This release changes the managed rules and renames commands, but is published as a patch, so `update` applies it without `--accept-major`. Review the new rules after upgrading.

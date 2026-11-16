@@ -258,12 +258,16 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
       const abs = resolve(rulesAbs, file);
       const text = readFileSync(abs, "utf8");
       const base = dirname(realpathSync(abs));
-      for (const m of text.matchAll(/\]\(<?([^)>\s]+)>?\)/g)) {
-        const raw = decodeURIComponent(m[1]!.split("#")[0]!.trim());
+      // `<...>` targets may hold spaces and parentheses; bare targets may hold
+      // balanced parentheses, as in framework route groups such as `(app)`.
+      const linkRe = /\]\(\s*(?:<([^>\n]+)>|([^()\s]+(?:\([^()\s]*\)[^()\s]*)*))\s*(?:"[^"]*")?\)/g;
+      for (const m of text.matchAll(linkRe)) {
+        const target = (m[1] ?? m[2])!;
+        const raw = decodeURIComponent(target.split("#")[0]!.trim());
         if (!raw || /^[a-z]+:/i.test(raw)) continue;
         if (!existsSync(resolve(base, raw)))
           errors.push(
-            `${config.rulesDir}/${file}: broken link ${m[1]} (links resolve from the rule's own directory)`,
+            `${config.rulesDir}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
           );
       }
     }
