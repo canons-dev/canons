@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `doctor` and the READMEs no longer claim that Codex skips `AGENTS.md` in an untrusted project: `codex exec` reads it either way.
+
 ## 0.1.1 (2026-11-16)
 
 - Released through npm trusted publishing (OIDC). No changes to the CLI or rules.

@@ -52,7 +52,7 @@ npx canons scopes --changed          # which rules apply to my diff?
 | `canons sync [--accept-major] [--force]` | Update the managed block, managed rules, client links and lock. Refuses to overwrite hand edits unless `--force`; refuses breaking rule upgrades unless `--accept-major`. |
 | `canons check [--strict]` | Deterministic checks; exit code 1 on errors (or on warnings with `--strict`). |
 | `canons scopes [--changed] [--json] <path>...` | List the rules whose `paths` match. Rules without `paths` are global and always listed. |
-| `canons doctor` | Environment hints (symlink support, Codex trust, other clients). |
+| `canons doctor` | Environment hints (symlink support, Codex hooks, other clients). |
 
 ## Configuration
 
@@ -78,7 +78,7 @@ npx canons scopes --changed          # which rules apply to my diff?
 
 | Client | How it sees the instructions |
 | --- | --- |
-| Codex | Reads `AGENTS.md` from the repository root down to the working directory and `.agents/skills/` natively. Trust the project, or Codex skips project instructions. |
+| Codex | Reads `AGENTS.md` from the repository root down to the working directory and `.agents/skills/` natively. |
 | Claude Code | `CLAUDE.md -> AGENTS.md`, `.claude/rules -> ../.agents/rules`, `.claude/skills -> ../.agents/skills`; rules load natively by `paths`. |
 | Cursor, GitHub Copilot | Read `AGENTS.md` natively. |
 | Gemini CLI | Set `context.fileName` to `["AGENTS.md"]`. |

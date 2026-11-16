@@ -52,7 +52,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 | `canons sync [--accept-major] [--force]` | 更新托管区块、托管规则、客户端软链接和 lock。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。 |
 | `canons check [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。 |
 | `canons scopes [--changed] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。 |
-| `canons doctor` | 环境提示（软链接支持、Codex 信任、其他客户端）。 |
+| `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |
 
 ## 配置
 
@@ -78,7 +78,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 | 客户端 | 如何读到指令 |
 | --- | --- |
-| Codex | 原生从仓库根往下读到工作目录的各级 `AGENTS.md`，并读取 `.agents/skills/`。需要在 Codex 里信任该项目，否则会跳过项目指令。 |
+| Codex | 原生从仓库根往下读到工作目录的各级 `AGENTS.md`，并读取 `.agents/skills/`。 |
 | Claude Code | `CLAUDE.md -> AGENTS.md`、`.claude/rules -> ../.agents/rules`、`.claude/skills -> ../.agents/skills`；规则按 `paths` 原生加载。 |
 | Cursor、GitHub Copilot | 原生读取 `AGENTS.md`。 |
 | Gemini CLI | 把 `context.fileName` 设为 `["AGENTS.md"]`。 |

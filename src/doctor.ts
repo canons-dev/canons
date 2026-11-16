@@ -33,7 +33,7 @@ export function doctor(root: string): string[] {
   }
   if (clients.includes("codex"))
     out.push(
-      "note  Codex skips project AGENTS.md when the project is not trusted: trust this project in Codex.",
+      "note  Codex reads AGENTS.md from the repository root down to the working directory; no adapter needed.",
       "note  Codex reads .agents/skills natively; no adapter needed.",
     );
   if (clients.includes("claude"))
