@@ -18,11 +18,13 @@ import { create, update } from "./update.ts";
 const HELP = `canons ${packageVersion()}
 
 Usage:
-  canons create [--locale <code>] [--runner local|npx]
+  canons create [--locale <code>] [--runner local|npx] [--adopt]
                                      write canons.json and run update
-  canons update [--accept-major] [--force]
+  canons update [--accept-major] [--force] [--adopt]
                                      write the AGENTS.md block, managed rules, client links, lock
                                      from the installed version (it does not upgrade the package)
+                                     --adopt moves an existing CLAUDE.md, .claude/rules or
+                                     .claude/skills into AGENTS.md / .agents/ and links it
   canons verify [--strict]           deterministic hygiene checks (for CI and pre-commit)
   canons scopes [--changed] [--json] <file-or-dir>...
                                      list the rules that apply to the given paths
@@ -65,19 +67,24 @@ export function main(argv: string[], cwd = process.cwd()): number {
     case "create": {
       const locale = takeOption(args, "--locale");
       const runner = takeOption(args, "--runner");
-      assertFlags(args, []);
+      assertFlags(args, ["--adopt"]);
       if (runner !== undefined && !(RUNNERS as readonly string[]).includes(runner))
         throw new Error(`--runner must be one of: ${RUNNERS.join(", ")}`);
-      for (const line of create(root, { locale, runner: runner as Runner | undefined }))
+      for (const line of create(root, {
+        locale,
+        runner: runner as Runner | undefined,
+        adopt: args.includes("--adopt"),
+      }))
         console.log(line);
       console.log('done. Next: write project rules outside the canons block, then run "canons verify".');
       return 0;
     }
     case "update": {
-      assertFlags(args, ["--accept-major", "--force"]);
+      assertFlags(args, ["--accept-major", "--force", "--adopt"]);
       const log = update(root, {
         acceptMajor: args.includes("--accept-major"),
         force: args.includes("--force"),
+        adopt: args.includes("--adopt"),
       });
       for (const line of log) console.log(line);
       if (!log.length) console.log("already up to date");

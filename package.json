@@ -19,10 +19,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "node src/build.ts",
-    "typecheck": "tsc -p tsconfig.json",
-    "test": "node --test \"src/test/**/*.test.ts\"",
-    "prepack": "npm run build"
+    "bundle": "node src/build.ts",
+    "typing": "tsc -p tsconfig.json",
+    "checks": "node --test \"src/test/**/*.test.ts\"",
+    "prepack": "npm run bundle"
   },
   "repository": {
     "type": "git",
@@ -39,6 +39,8 @@
     "conventions"
   ],
   "devDependencies": {
+    "@tsconfig/node-ts": "^23.6.5",
+    "@tsconfig/node22": "^22.0.7",
     "@types/node": "^22.20.5",
     "typescript": "^6.0.3"
   }

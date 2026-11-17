@@ -42,6 +42,31 @@ export interface VerifyOptions {
   contentRoot?: string;
 }
 
+// `<...>` targets may hold spaces and parentheses; bare targets may hold
+// balanced parentheses, as in framework route groups such as `(app)`.
+const LINK_RE = /\]\(\s*(?:<([^>\n]+)>|([^()\s]+(?:\([^()\s]*\)[^()\s]*)*))\s*(?:"[^"]*")?\)/g;
+
+/** Relative link targets in a Markdown file that do not exist; code spans and fences are skipped. */
+export function brokenLinks(abs: string): string[] {
+  const text = readFileSync(abs, "utf8")
+    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "")
+    .replace(/`[^`\n]*`/g, "");
+  const base = dirname(realpathSync(abs));
+  const broken: string[] = [];
+  for (const m of text.matchAll(LINK_RE)) {
+    const target = (m[1] ?? m[2])!;
+    let raw = target.split("#")[0]!.trim();
+    try {
+      raw = decodeURIComponent(raw);
+    } catch {
+      // Keep a target with a stray % as written.
+    }
+    if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw)) continue;
+    if (!existsSync(resolve(base, raw))) broken.push(target);
+  }
+  return broken;
+}
+
 /**
  * Each anchor must appear as a whole word in a non-ignored, non-Markdown file under
  * `sourceDirs`. Comments count; the point is to catch renames and deletions.
@@ -254,24 +279,26 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
             `${config.rulesDir}/${file}: name does not match ruleNamePattern ${config.ruleNamePattern}`,
           );
     }
-    for (const file of ruleFiles) {
-      const abs = resolve(rulesAbs, file);
-      const text = readFileSync(abs, "utf8");
-      const base = dirname(realpathSync(abs));
-      // `<...>` targets may hold spaces and parentheses; bare targets may hold
-      // balanced parentheses, as in framework route groups such as `(app)`.
-      const linkRe = /\]\(\s*(?:<([^>\n]+)>|([^()\s]+(?:\([^()\s]*\)[^()\s]*)*))\s*(?:"[^"]*")?\)/g;
-      for (const m of text.matchAll(linkRe)) {
-        const target = (m[1] ?? m[2])!;
-        const raw = decodeURIComponent(target.split("#")[0]!.trim());
-        if (!raw || /^[a-z]+:/i.test(raw)) continue;
-        if (!existsSync(resolve(base, raw)))
-          errors.push(
-            `${config.rulesDir}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
-          );
-      }
-    }
+    for (const file of ruleFiles)
+      for (const target of brokenLinks(resolve(rulesAbs, file)))
+        errors.push(
+          `${config.rulesDir}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
+        );
   }
+
+  // 5. Links in the other instruction files and in docDirs resolve from the file's own directory.
+  const under = (dir: string) => {
+    const prefix = `${dir.replace(/\/+$/, "")}/`;
+    return files.filter((f) => f.startsWith(prefix) && f.endsWith(".md"));
+  };
+  const instructionFiles = [...new Set([...(existsSync(rootPath) ? [ROOT_FILE] : []), ...agentsFiles])];
+  for (const file of [...instructionFiles, ...config.docDirs.flatMap(under)])
+    for (const target of brokenLinks(resolve(root, file)))
+      errors.push(`${file}: broken link ${target}`);
+  // Skills may be vendored upstream text (never edited locally), so only warn.
+  for (const file of under(config.skillsDir))
+    for (const target of brokenLinks(resolve(root, file)))
+      warnings.push(`${file}: broken link ${target}`);
 
   return { errors, warnings };
 }

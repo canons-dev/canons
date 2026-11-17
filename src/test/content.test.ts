@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { parseConfig } from "../config.ts";
 import {
   extractBlock,
   isBreakingUpgrade,
   loadCanon,
+  PACKAGE_ROOT,
   renderBlock,
   sha256,
   upsertBlock,
@@ -54,4 +57,10 @@ test("parseConfig rejects unknown keys and unshipped features", () => {
 
 test("unknown locale lists the available ones", () => {
   assert.throws(() => loadCanon("xx"), /available: en, zh-CN/);
+});
+
+test("npm script names have six lowercase letters, except npm lifecycle hooks", () => {
+  const lifecycle = new Set(["prepack", "prepare", "prepublishOnly", "postpack"]);
+  const scripts = Object.keys(JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")).scripts);
+  for (const name of scripts) if (!lifecycle.has(name)) assert.match(name, /^[a-z]{6}$/, name);
 });
