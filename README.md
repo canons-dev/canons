@@ -11,27 +11,20 @@ Teams that use more than one coding agent end up with `AGENTS.md`, `CLAUDE.md`, 
 - **One copy of every instruction.** `AGENTS.md`, `.agents/rules/` and `.agents/skills/` are the only real files; client entry points are relative symlinks.
 - **Path-scoped rules for every client.** Rules declare `paths` in frontmatter. Claude Code loads them natively; for every other client the root instructions require `canons scopes <path>` before editing and `canons scopes --changed` before finishing.
 - **A shared baseline.** A managed block in `AGENTS.md` carries agent conventions (Git authority, verification, handoffs, documentation hygiene). Your project rules live outside the block.
-- **Deterministic guards.** `canons verify` catches hand-edited managed content, copies instead of links, broken rule links, an `AGENTS.override.md` that would make Codex skip `AGENTS.md`, and instruction chains over the 32 KiB Codex reads.
+- **Deterministic guards.** `canons verify` catches hand-edited managed content, copies instead of links, broken links in `AGENTS.md`, rules and skills, an `AGENTS.override.md` that would make Codex skip `AGENTS.md`, and instruction chains over the 32 KiB Codex reads.
 
 ## Set up with your coding agent
 
-Paste this into Codex, Claude Code or any other coding agent, from the root of your repository. Paste it again later to update: the same steps install canons the first time and update it afterwards.
+Paste this into Codex, Claude Code or any other coding agent at the root of your repository. Paste it again later to update.
 
 ```text
-Install or update canons (https://github.com/canons-dev/canons) in this repository. canons keeps coding-agent instructions in one place: AGENTS.md, .agents/rules/ and .agents/skills/.
+Install or update canons (https://github.com/canons-dev/canons) in this repository, then follow its block in AGENTS.md.
 
-1. Run `git status`. If there are uncommitted changes, list them and ask me before going on.
-2. Check that Node 22 or newer is available.
-3. If the repository has a package.json, run `npm install --save-dev @canons-dev/canons@latest`. If it has none, do not create one: use `npx -y @canons-dev/canons@latest` wherever the steps below say `npx canons`.
-4. If canons.json does not exist, run `npx canons create` (add `--locale zh-CN` only if I ask for Chinese rules). Otherwise run `npx canons update`.
-5. If the command stops:
-   - On a breaking upgrade: show me the entries between the old and new versions in node_modules/@canons-dev/canons/doc/CHANGELOG.md (without a local install: https://github.com/canons-dev/canons/blob/main/doc/CHANGELOG.md), and run `npx canons update --accept-major` only after I agree.
-   - On hand edits to managed content: show me the edits. Do not pass `--force` unless I say so.
-   - Because CLAUDE.md, .claude/rules or .claude/skills is a real file or directory: move its content into AGENTS.md (outside the canons block), .agents/rules/ or .agents/skills/, then rerun. Ask me before deleting anything.
-   - Because your sandbox may not write to .agents/ (the Codex sandbox protects it): ask me to approve running the command outside the sandbox, or to run it myself.
-6. Run `npx canons verify` and fix what it reports.
-7. Read the canons block in AGENTS.md and follow it from now on. If AGENTS.md has no project settings yet (UI language, developer language, directory layout), ask me for the UI language and record all three outside the block.
-8. Change nothing beyond what these steps need. Summarize what changed (`git diff --stat`) and anything you need from me. Do not commit unless I ask.
+- Command: with a package.json, add @canons-dev/canons@latest as a dev dependency and use `npx canons`; without one, use `npx -y @canons-dev/canons@latest`. Needs Node 22+.
+- First time: `create --adopt` (it moves an existing CLAUDE.md, .claude/rules or .claude/skills into place). Later: `update`. Then `verify`, and fix what it reports.
+- Ask me first before you build on my uncommitted changes, accept a breaking upgrade (show me the CHANGELOG entries), discard hand edits to managed content, delete anything, or run outside your sandbox (the Codex sandbox protects .agents/).
+- If AGENTS.md has no project settings yet, ask me for the UI language, then record UI language, developer language and directory layout outside the canons block.
+- Change nothing else and do not commit. End with what changed and what you need from me.
 ```
 
 ## Quick start
@@ -75,8 +68,8 @@ npx canons scopes --changed          # which rules apply to my diff?
 
 | Command | What it does |
 | --- | --- |
-| `canons create [--locale <code>] [--runner local\|npx]` | Create `canons.json` and run `update`. Writes `canons.json` last, so a refused run leaves nothing behind. |
-| `canons update [--accept-major] [--force]` | Rewrite, from the installed version (it does not upgrade the package), the managed block, managed rules, client links and lock. Refuses to overwrite hand edits unless `--force`; refuses breaking rule upgrades unless `--accept-major`. Every refusal, including client files in the way and directories it cannot write, comes before the first write. |
+| `canons create [--locale <code>] [--runner local\|npx] [--adopt]` | Create `canons.json` and run `update`. Writes `canons.json` last, so a refused run leaves nothing behind. |
+| `canons update [--accept-major] [--force] [--adopt]` | Rewrite, from the installed version (it does not upgrade the package), the managed block, managed rules, client links and lock. Refuses to overwrite hand edits unless `--force`; refuses breaking rule upgrades unless `--accept-major`. Every refusal, including client files in the way and directories it cannot write, comes before the first write. `--adopt` moves a real `CLAUDE.md`, `.claude/rules` or `.claude/skills` into `AGENTS.md` / `.agents/` and links it; it refuses when that would overwrite or merge differing content. |
 | `canons verify [--strict]` | Deterministic checks; exit code 1 on errors (or on warnings with `--strict`). |
 | `canons scopes [--changed] [--json] <path>...` | List the rules whose `paths` match. Rules without `paths` are global and always listed. |
 | `canons doctor` | Environment hints (symlink support, Codex hooks, other clients). |
@@ -94,6 +87,7 @@ npx canons scopes --changed          # which rules apply to my diff?
   "rulesDir": ".agents/rules",
   "skillsDir": ".agents/skills",
   "sourceDirs": ["src"],
+  "docDirs": ["doc"],
   "budgetBytes": 24576,
   "ruleNamePattern": "^[a-z-]+$"
 }
@@ -101,6 +95,7 @@ npx canons scopes --changed          # which rules apply to my diff?
 
 - `runner` sets the command the managed rules tell agents to run. `local` (the default when `package.json` exists) writes `npx canons` and needs the package as a dev dependency; `verify` warns when it is missing. `npx` (the default without `package.json`) writes `npx -y @canons-dev/canons@<version>`, pinned to the version that last ran `update`.
 - `sourceDirs` lists where rule `anchors` must still appear (default `["src"]`; Markdown files are not searched).
+- `docDirs` adds directories whose Markdown links `verify` checks. `AGENTS.md` files and rules are always checked (errors), skills too (warnings, since they may be vendored upstream text). Links inside code are ignored.
 - `budgetBytes` limits the root `AGENTS.md` alone (default 24 KiB, at most 32 KiB) so nested instruction files still fit in what Codex loads.
 - `ruleNamePattern` optionally constrains the names of your own top-level rule files.
 - `presets` and `hooks` are reserved for later versions and must stay empty / `false`.

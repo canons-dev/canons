@@ -29,6 +29,8 @@ export interface CanonsConfig {
   skillsDir: string;
   /** Where rule `anchors` must still appear (repo-relative directories). */
   sourceDirs: string[];
+  /** Extra directories whose Markdown links `verify` checks (AGENTS.md, rules and skills are always checked). */
+  docDirs: string[];
   /** Byte budget for the root AGENTS.md alone. */
   budgetBytes: number;
   /** Optional naming rule for the project's own top-level rule files (basename without .md). */
@@ -45,6 +47,7 @@ export const DEFAULT_CONFIG: CanonsConfig = {
   rulesDir: ".agents/rules",
   skillsDir: ".agents/skills",
   sourceDirs: ["src"],
+  docDirs: [],
   budgetBytes: 24 * 1024,
   presets: [],
   hooks: false,
@@ -59,6 +62,7 @@ const KEYS = new Set([
   "rulesDir",
   "skillsDir",
   "sourceDirs",
+  "docDirs",
   "budgetBytes",
   "ruleNamePattern",
   "presets",
@@ -104,6 +108,14 @@ export function parseConfig(raw: unknown): CanonsConfig {
     )
   )
     fail("sourceDirs must be a non-empty list of repo-relative directories");
+  if (
+    !Array.isArray(config.docDirs) ||
+    config.docDirs.some(
+      (dir) =>
+        typeof dir !== "string" || !dir || dir.startsWith("/") || dir.split("/").includes(".."),
+    )
+  )
+    fail("docDirs must be a list of repo-relative directories");
   if (!Number.isInteger(config.budgetBytes) || config.budgetBytes <= 0)
     fail("budgetBytes must be a positive integer");
   if (config.budgetBytes > CODEX_CHAIN_MAX_BYTES)

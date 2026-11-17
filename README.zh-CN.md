@@ -11,27 +11,20 @@
 - **每条指令只有一份。** 只有 `AGENTS.md`、`.agents/rules/`、`.agents/skills/` 是实体文件；客户端入口都是相对软链接。
 - **路径级规则对所有客户端生效。** 规则在 frontmatter 里声明 `paths`。Claude Code 原生加载；其他客户端由根指令要求修改前跑 `canons scopes <路径>`、完成前跑 `canons scopes --changed`。
 - **共享基线。** `AGENTS.md` 里的托管区块承载通用的 agent 约定（Git 授权、验证、交接、文档卫生）。项目自己的规则写在区块之外。
-- **确定性守护。** `canons verify` 能发现：托管内容被手改、用复制代替软链接、规则里的死链、会让 Codex 跳过 `AGENTS.md` 的 `AGENTS.override.md`，以及超出 Codex 读取上限（32 KiB）的指令链。
+- **确定性守护。** `canons verify` 能发现：托管内容被手改、用复制代替软链接、`AGENTS.md`、规则和技能里的死链、会让 Codex 跳过 `AGENTS.md` 的 `AGENTS.override.md`，以及超出 Codex 读取上限（32 KiB）的指令链。
 
 ## 交给 coding agent 安装
 
-在仓库根目录，把下面这段粘贴给 Codex、Claude Code 或其他 coding agent。以后再粘贴一次就是更新：同一套步骤第一次是安装，之后是升级。
+在仓库根目录把下面这段粘贴给 Codex、Claude Code 或其他 coding agent。以后再粘贴一次就是更新。
 
 ```text
-在这个仓库里安装或更新 canons（https://github.com/canons-dev/canons）。canons 把 coding agent 的指令集中在一处：AGENTS.md、.agents/rules/ 和 .agents/skills/。
+在这个仓库里安装或更新 canons（https://github.com/canons-dev/canons），之后按 AGENTS.md 里的 canons 区块执行。
 
-1. 运行 `git status`。如果有未提交的改动，列出来并先问我再继续。
-2. 确认有 Node 22 或更高版本。
-3. 如果仓库里有 package.json，运行 `npm install --save-dev @canons-dev/canons@latest`。如果没有，不要新建：下面步骤里凡是写 `npx canons` 的地方，都改用 `npx -y @canons-dev/canons@latest`。
-4. 如果没有 canons.json，运行 `npx canons create --locale zh-CN`；否则运行 `npx canons update`。
-5. 如果命令停下来：
-   - 因为破坏性升级：把 node_modules/@canons-dev/canons/doc/CHANGELOG.md（没有本地安装时看 https://github.com/canons-dev/canons/blob/main/doc/CHANGELOG.md）里新旧版本之间的条目给我看，我同意后再运行 `npx canons update --accept-major`。
-   - 因为托管内容被手改：把改动给我看。除非我说可以，不要加 `--force`。
-   - 因为 CLAUDE.md、.claude/rules 或 .claude/skills 是实体文件或目录：把内容移进 AGENTS.md（canons 区块之外）、.agents/rules/ 或 .agents/skills/，然后重跑。删除任何东西前先问我。
-   - 因为沙箱不允许写 .agents/（Codex 的沙箱会保护这个目录）：请我批准在沙箱外运行该命令，或者由我自己运行。
-6. 运行 `npx canons verify`，修复它报告的问题。
-7. 阅读 AGENTS.md 里的 canons 区块，此后照它执行。如果 AGENTS.md 里还没有项目设定（UI 语言、开发语言、目录结构），问我 UI 语言，并把三项都记在区块之外。
-8. 不要改动这些步骤以外的任何东西。总结改了什么（`git diff --stat`）以及需要我做什么。除非我要求，不要提交。
+- 命令：有 package.json 就把 @canons-dev/canons@latest 装成 dev dependency，用 `npx canons`；没有就用 `npx -y @canons-dev/canons@latest`。需要 Node 22+。
+- 第一次运行 `create --locale zh-CN --adopt`（会把已有的 CLAUDE.md、.claude/rules、.claude/skills 搬到位），以后运行 `update`。然后运行 `verify`，修好它报告的问题。
+- 以下情况先问我：要在我未提交的改动上继续、接受破坏性升级（把 CHANGELOG 里的相关条目给我看）、丢弃托管内容的手工修改、删除任何东西、在沙箱外运行（Codex 沙箱保护 .agents/）。
+- AGENTS.md 里还没有项目设定时，问我 UI 语言，然后把 UI 语言、开发语言和目录结构记在 canons 区块之外。
+- 不改其他东西，不提交。最后告诉我改了什么、需要我做什么。
 ```
 
 ## 快速开始
@@ -75,8 +68,8 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 | 命令 | 作用 |
 | --- | --- |
-| `canons create [--locale <code>] [--runner local\|npx]` | 创建 `canons.json` 并执行 `update`。`canons.json` 最后才写，被拒绝时不留下任何文件。 |
-| `canons update [--accept-major] [--force]` | 用已安装的版本重写托管区块、托管规则、客户端软链接和 lock（不会升级 npm 包）。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。 |
+| `canons create [--locale <code>] [--runner local\|npx] [--adopt]` | 创建 `canons.json` 并执行 `update`。`canons.json` 最后才写，被拒绝时不留下任何文件。 |
+| `canons update [--accept-major] [--force] [--adopt]` | 用已安装的版本重写托管区块、托管规则、客户端软链接和 lock（不会升级 npm 包）。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。`--adopt` 把实体的 `CLAUDE.md`、`.claude/rules`、`.claude/skills` 搬进 `AGENTS.md` / `.agents/` 并建软链接；会覆盖或需要合并不同内容时拒绝。 |
 | `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。 |
 | `canons scopes [--changed] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。 |
 | `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |
@@ -94,6 +87,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
   "rulesDir": ".agents/rules",
   "skillsDir": ".agents/skills",
   "sourceDirs": ["src"],
+  "docDirs": ["doc"],
   "budgetBytes": 24576,
   "ruleNamePattern": "^[a-z]{6}$"
 }
@@ -101,6 +95,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 - `runner` 决定托管规则让 agent 运行什么命令。`local`（有 `package.json` 时的默认值）写 `npx canons`，要求把包装成 dev dependency，缺了 `verify` 会警告。`npx`（没有 `package.json` 时的默认值）写 `npx -y @canons-dev/canons@<版本>`，固定为最近一次运行 `update` 的版本。
 - `sourceDirs` 列出规则 `anchors` 必须仍能找到的目录（默认 `["src"]`，不搜索 Markdown 文件）。
+- `docDirs` 追加需要 `verify` 检查 Markdown 链接的目录。`AGENTS.md` 和规则始终检查（报 error），技能也检查（报 warning，因为可能是 vendor 进来的上游原文）。代码里的链接不检查。
 - `budgetBytes` 只限制根 `AGENTS.md`（默认 24 KiB，最多 32 KiB），给嵌套的指令文件留出 Codex 能加载的空间。
 - `ruleNamePattern` 可选，用来约束项目自己的顶层规则文件名。
 - `presets` 和 `hooks` 留给后续版本，目前必须保持为空 / `false`。

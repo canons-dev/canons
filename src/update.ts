@@ -7,7 +7,9 @@ import {
   readFileSync,
   readlinkSync,
   readdirSync,
+  renameSync,
   rmSync,
+  rmdirSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -40,7 +42,43 @@ import { listMarkdown } from "./rules.ts";
 export interface UpdateOptions {
   acceptMajor?: boolean;
   force?: boolean;
+  /** Move an existing CLAUDE.md, .claude/rules or .claude/skills into the real sources instead of refusing. */
+  adopt?: boolean;
   contentRoot?: string;
+}
+
+/** One client path that --adopt turns into a link: what moves where. */
+interface Adoption {
+  link: string;
+  target: string;
+  /** Entries to move from the link directory into the target directory; empty for the root file. */
+  entries: string[];
+  /** The link is a file whose content becomes (or already is) the root file. */
+  file?: "move" | "same";
+}
+
+/**
+ * Plans how --adopt replaces a real client file or directory with a link.
+ * Throws when it cannot do so without losing or overwriting content.
+ */
+function planAdoption(root: string, link: string, target: string): Adoption {
+  const linkAbs = resolve(root, link);
+  const targetAbs = resolve(root, posix.join(posix.dirname(link), target));
+  const stat = lstatSync(linkAbs);
+  const targetRel = relative(root, targetAbs).split("\\").join("/");
+  if (stat.isSymbolicLink())
+    throw new Error(`${link} is a symlink to ${readlinkSync(linkAbs)}, not to ${target}. Point it at ${targetRel} and rerun.`);
+  if (stat.isFile()) {
+    if (!existsSync(targetAbs)) return { link, target, entries: [], file: "move" };
+    if (readFileSync(linkAbs, "utf8") === readFileSync(targetAbs, "utf8"))
+      return { link, target, entries: [], file: "same" };
+    throw new Error(`${link} and ${targetRel} both exist with different content. Merge ${link} into ${targetRel} (outside the canons block), remove it, and rerun.`);
+  }
+  const entries = readdirSync(linkAbs).filter((e) => e !== ".DS_Store");
+  const clashes = existsSync(targetAbs) ? entries.filter((e) => existsSync(resolve(targetAbs, e))) : [];
+  if (clashes.length)
+    throw new Error(`cannot move ${link} into ${targetRel}: both contain ${clashes.join(", ")}. Merge them by hand and rerun.`);
+  return { link, target, entries };
 }
 
 export function readLock(root: string): Lock | undefined {
@@ -82,9 +120,28 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
       `canons ${lock.canons} -> ${canon.version} is a breaking upgrade of the rules. Review the changelog, then rerun with --accept-major.`,
     );
 
+  // Client adapters: never clobber a real file; with --adopt, plan to move it into place.
+  const links: [string, string][] = [];
+  const adoptions: Adoption[] = [];
+  for (const [link, target] of clientLinks(config)) {
+    const stat = lstatSync(resolve(root, link), { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() && readlinkSync(resolve(root, link)) === target) continue;
+    if (stat && !options.adopt)
+      throw new Error(
+        `${link} exists but is not a symlink to ${target}. Rerun with --adopt to move its content into place, or merge it into ${ROOT_FILE} (outside the canons block) or ${config.rulesDir} by hand and remove it.`,
+      );
+    if (stat) adoptions.push(planAdoption(root, link, target));
+    links.push([link, target]);
+  }
+
   // Refuse to overwrite local edits to managed content.
   const rootPath = resolve(root, ROOT_FILE);
-  const rootText = existsSync(rootPath) ? readFileSync(rootPath, "utf8") : "";
+  const adoptedRoot = adoptions.find((a) => a.file === "move");
+  const rootText = existsSync(rootPath)
+    ? readFileSync(rootPath, "utf8")
+    : adoptedRoot
+      ? readFileSync(resolve(root, adoptedRoot.link), "utf8")
+      : "";
   const edited: string[] = [];
   const current = rootText ? extractBlock(rootText) : undefined;
   if (current && sha256(current.body) !== current.attrs.sha256)
@@ -109,23 +166,12 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
       `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${config.rulesDir}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
     );
 
-  // Client adapters: never clobber a real file.
-  const links: [string, string][] = [];
-  for (const [link, target] of clientLinks(config)) {
-    const stat = lstatSync(resolve(root, link), { throwIfNoEntry: false });
-    if (stat?.isSymbolicLink() && readlinkSync(resolve(root, link)) === target) continue;
-    if (stat)
-      throw new Error(
-        `${link} exists but is not a symlink to ${target}. Merge its content into ${ROOT_FILE} (outside the canons block) or ${config.rulesDir}, remove it, and rerun.`,
-      );
-    links.push([link, target]);
-  }
-
   // Directories and a write probe in each, undone if any of them fails.
   const dirs = [
     ".",
     ...new Set([
       ...[...canon.rules.keys()].map((f) => posix.dirname(managedRulePath(config, f))),
+      config.rulesDir,
       config.skillsDir,
       ...links.map(([link]) => posix.dirname(link)),
     ]),
@@ -145,6 +191,21 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     throw new Error(
       `cannot write in this repository: ${(error as Error).message}. Nothing was changed. If a sandbox protects these paths (the Codex sandbox protects .agents/), run the command outside it.`,
     );
+  }
+
+  // Adopted client files and directories move into the real sources.
+  for (const a of adoptions) {
+    const linkAbs = resolve(root, a.link);
+    const targetAbs = resolve(root, posix.join(posix.dirname(a.link), a.target));
+    if (a.file === "move") renameSync(linkAbs, targetAbs);
+    else if (a.file === "same") rmSync(linkAbs);
+    else {
+      for (const entry of a.entries) renameSync(resolve(linkAbs, entry), resolve(targetAbs, entry));
+      rmSync(resolve(linkAbs, ".DS_Store"), { force: true });
+      rmdirSync(linkAbs);
+    }
+    const moved = a.file ? "" : ` (${a.entries.length} entr${a.entries.length === 1 ? "y" : "ies"})`;
+    log.push(`adopted ${a.link} into ${relative(root, targetAbs).split("\\").join("/")}${moved}`);
   }
 
   // Root file and block.

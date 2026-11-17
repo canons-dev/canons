@@ -251,3 +251,71 @@ test("cli exit codes", () => {
     console.log = log;
   }
 });
+
+test("--adopt moves real client files and directories into place", () => {
+  // A repository that only Claude Code could read: a real CLAUDE.md and .claude/ directories.
+  const root = mkdtempSync(join(tmpdir(), "canons-adopt-"));
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  writeFileSync(join(root, "CLAUDE.md"), "# Service\n\nProject notes.\n");
+  mkdirSync(join(root, ".claude/rules"), { recursive: true });
+  writeFileSync(join(root, ".claude/rules/apis.md"), '---\npaths:\n  - "CLAUDE.md"\n---\n\n# APIs\n');
+  mkdirSync(join(root, ".claude/skills/deploy"), { recursive: true });
+  writeFileSync(join(root, ".claude/skills/deploy/SKILL.md"), "---\nname: deploy\n---\n");
+
+  assert.throws(() => create(root), /Rerun with --adopt/);
+  assert.deepEqual(readdirSync(root).sort(), [".claude", ".git", "CLAUDE.md"], "refusal changes nothing");
+
+  const log = create(root, { adopt: true });
+  assert.ok(log.includes("adopted CLAUDE.md into AGENTS.md"), log.join("\n"));
+  assert.ok(log.includes("adopted .claude/rules into .agents/rules (1 entry)"), log.join("\n"));
+  const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+  assert.match(agents, /^# Service\n\n<!-- canons:begin/);
+  assert.match(agents, /Project notes\./);
+  assert.equal(readlinkSync(join(root, "CLAUDE.md")), "AGENTS.md");
+  assert.equal(readlinkSync(join(root, ".claude/rules")), "../.agents/rules");
+  assert.equal(readlinkSync(join(root, ".claude/skills")), "../.agents/skills");
+  readFileSync(join(root, ".agents/rules/apis.md"), "utf8");
+  readFileSync(join(root, ".agents/rules/canons/layout.md"), "utf8");
+  readFileSync(join(root, ".agents/skills/deploy/SKILL.md"), "utf8");
+  assert.deepEqual(verify(root).errors, []);
+});
+
+test("--adopt refuses to overwrite or merge diverging content", () => {
+  const root = synced();
+  rmSync(join(root, "CLAUDE.md"));
+  writeFileSync(join(root, "CLAUDE.md"), "different notes\n");
+  assert.throws(() => update(root, { adopt: true }), /both exist with different content/);
+
+  // An identical copy is simply replaced by the link.
+  rmSync(join(root, "CLAUDE.md"));
+  writeFileSync(join(root, "CLAUDE.md"), readFileSync(join(root, "AGENTS.md"), "utf8"));
+  update(root, { adopt: true });
+  assert.equal(readlinkSync(join(root, "CLAUDE.md")), "AGENTS.md");
+
+  rmSync(join(root, ".claude/rules"));
+  mkdirSync(join(root, ".claude/rules"));
+  writeFileSync(join(root, ".claude/rules/apis.md"), "clash\n");
+  assert.throws(() => update(root, { adopt: true }), /both contain apis\.md/);
+  assert.equal(lstatSync(join(root, ".claude/rules")).isDirectory(), true, "nothing moved");
+});
+
+test("links are checked in AGENTS.md, skills and docDirs, not inside code", () => {
+  const root = synced();
+  const agentsPath = join(root, "AGENTS.md");
+  writeFileSync(
+    agentsPath,
+    `${readFileSync(agentsPath, "utf8")}\nSee [guide](doc/guide.md), \`[x](not/a/link.md)\` and\n\n\`\`\`md\n[y](also/not.md)\n\`\`\`\n`,
+  );
+  assert.match(errorsOf(root), /AGENTS\.md: broken link doc\/guide\.md/);
+  assert.doesNotMatch(errorsOf(root), /not\/a\/link|also\/not/);
+  mkdirSync(join(root, "doc"));
+  writeFileSync(join(root, "doc/guide.md"), "[gone](gone.md)\n");
+  assert.deepEqual(verify(root).errors, [], "docs are not checked unless listed in docDirs");
+
+  writeFileSync(join(root, "canons.json"), JSON.stringify({ version: 1, docDirs: ["doc"] }));
+  assert.match(errorsOf(root), /doc\/guide\.md: broken link gone\.md/);
+
+  mkdirSync(join(root, ".agents/skills/ship"), { recursive: true });
+  writeFileSync(join(root, ".agents/skills/ship/SKILL.md"), "[run](missing.sh)\n");
+  assert.match(verify(root).warnings.join("\n"), /SKILL\.md: broken link missing\.sh/);
+});
