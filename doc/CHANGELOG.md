@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-11-17)
+
+Rule content changes: upgrade with `canons update --accept-major` and review the new block.
 
 - The managed rules state outcomes instead of steps: each item says what it wants and why, and any method it names (`git status`, the option count, the settlement table, the handoff fields) is a reference an agent may improve on. Boundaries that are the user's or the project's call (C8, C20, C21) now say so and why. Rule ids and scope are unchanged.
 - C9 asks agents to start from the latest upstream code (fetch, then fast-forward or branch from the fresh base) and to ask the user when that would need a merge or rebase or touch someone else's changes. C8 no longer lists `fetch`, and exempts this sync.
@@ -8,7 +10,7 @@
 - `create` and `update` take `--adopt`: a real `CLAUDE.md`, `.claude/rules` or `.claude/skills` is moved into `AGENTS.md` / `.agents/` and replaced by its link. It refuses when that would overwrite or merge differing content. `doctor` points at it.
 - `verify` checks links in every `AGENTS.md` (errors) and in skills (warnings), not only in rules; links inside code are ignored. New `canons.json` key `docDirs` adds directories to check.
 - C14 asks for an explicit settlement verdict at the end of every stage, non-interactive runs included, and counts uncommitted changes and an unsynced upstream as open. In acceptance runs Codex had stated no status at all; with this wording it states done or pending, what remains and who acts next.
-- Repository: npm scripts and GitHub workflows use six-letter names (`bundle`, `typing`, `checks`; workflows `checks.yml` and `upload.yml`); `tsconfig.json` extends `@tsconfig/node22` and `@tsconfig/node-ts`.
+- Repository: npm scripts and GitHub workflows use six-letter names (`bundle`, `typing`, `checks`; workflow `checks.yml`; the publish workflow keeps `release.yml` until the npm trusted publisher can be switched to `upload.yml`); `tsconfig.json` extends `@tsconfig/node22` and `@tsconfig/node-ts`.
 
 ## 0.1.5 (2026-11-16)
 
