@@ -23,7 +23,7 @@ For every coding agent in this repository. Each item names an outcome and why; a
 - **C11** Keep fact and inference apart: mark unverified judgements with their basis and how to verify them; cite second-hand conclusions and never promote them to fact.
 - **C12** A missing capability (sub-agents, browser, question UI) changes the method, not the requirement: required confirmations and verification still happen, and what stays unverified is reported.
 - **C13** A handoff lets the receiver continue without asking back: write it in `tmp/` (goal, scope, changed files, decisions, verification, remaining work, open questions) and pass it on explicitly. Durable knowledge goes into docs.
-- **C14** At the end of each stage the user can see at a glance whether the session is done and safe to archive, and for each open item its blocker, owner and next step (for example a table). Unmerged PRs, pending deploys, re-tests and user decisions count as open.
+- **C14** Every stage, including a non-interactive run, ends with an explicit settlement verdict, so the user knows without reading back whether the session is done and safe to archive; each open item names its blocker, owner and next step (for example as a table). Uncommitted changes, unsynced upstream, unmerged PRs, pending deploys, re-tests and user decisions count as open.
 
 ### Finishing a change
 
