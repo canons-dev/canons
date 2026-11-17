@@ -35,6 +35,8 @@ export interface CanonsConfig {
   budgetBytes: number;
   /** Optional naming rule for the project's own top-level rule files (basename without .md). */
   ruleNamePattern?: string;
+  /** Whether `scopes` and `doctor` mention a newer canons version (default true). */
+  updateCheck: boolean;
   presets: string[];
   hooks: boolean;
 }
@@ -49,6 +51,7 @@ export const DEFAULT_CONFIG: CanonsConfig = {
   sourceDirs: ["src"],
   docDirs: [],
   budgetBytes: 24 * 1024,
+  updateCheck: true,
   presets: [],
   hooks: false,
 };
@@ -65,6 +68,7 @@ const KEYS = new Set([
   "docDirs",
   "budgetBytes",
   "ruleNamePattern",
+  "updateCheck",
   "presets",
   "hooks",
 ]);
@@ -131,6 +135,7 @@ export function parseConfig(raw: unknown): CanonsConfig {
       fail("ruleNamePattern is not a valid regular expression");
     }
   }
+  if (typeof config.updateCheck !== "boolean") fail("updateCheck must be true or false");
   if (!Array.isArray(config.presets))
     fail("presets must be a list");
   if (config.presets.length)

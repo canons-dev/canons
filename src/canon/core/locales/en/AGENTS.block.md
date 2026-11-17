@@ -6,7 +6,7 @@ For every coding agent in this repository. Each item names an outcome and why; a
 
 - **C1** One editable source per convention, so every client reads the same text: `AGENTS.md`, `.agents/rules/`, `.agents/skills/`. Client entry points (`CLAUDE.md`, `.claude/rules`, `.claude/skills`) are relative symlinks to them; copies and reversed links drift.
 - **C2** Each constraint sits at the tier of its reach: red lines in this file, subsystem guards in path-scoped rules (`paths` frontmatter), multi-step procedures in skills. Red lines never move down, since lower tiers may not load.
-- **C3** Know which rules govern the files you touch before editing, and satisfy them for the actual diff before finishing. Native rule loading is incomplete, so `npx canons scopes <path>...` (planned paths for new files) and `npx canons scopes --changed` are authoritative. No match still leaves this file in force.
+- **C3** Know which rules govern the files you touch before editing, and satisfy them for the actual diff before finishing. Native rule loading is incomplete, so `npx canons scopes <path>...` (planned paths for new files) and `npx canons scopes --changed` are authoritative. No match still leaves this file in force. When it mentions a newer canons version, finish the current task, then ask the user: on consent, follow the `canons` skill; if declined, run `npx canons latest --decline <version>`.
 - **C4** Every client must load this file whole, so it stays within its byte budget (`npx canons verify`). Make room by condensing or moving rationale into docs, never by deleting a red line.
 
 ### Knowledge and documents

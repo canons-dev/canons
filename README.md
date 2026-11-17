@@ -72,6 +72,7 @@ npx canons scopes --changed          # which rules apply to my diff?
 | `canons update [--accept-major] [--force] [--adopt]` | Rewrite, from the installed version (it does not upgrade the package), the managed block, managed rules, client links and lock. Refuses to overwrite hand edits unless `--force`; refuses breaking rule upgrades unless `--accept-major`. Every refusal, including client files in the way and directories it cannot write, comes before the first write. `--adopt` moves a real `CLAUDE.md`, `.claude/rules` or `.claude/skills` into `AGENTS.md` / `.agents/` and links it; it refuses when that would overwrite or merge differing content. |
 | `canons verify [--strict]` | Deterministic checks; exit code 1 on errors (or on warnings with `--strict`). |
 | `canons scopes [--changed] [--json] <path>...` | List the rules whose `paths` match. Rules without `paths` are global and always listed. |
+| `canons latest [--json] [--decline <version>]` | Compare this repository's version with the newest published one (network): breaking or not, and where the changelog is. Exit code 10 when a newer version exists. `--decline` stops the update notice for that version. |
 | `canons doctor` | Environment hints (symlink support, Codex hooks, other clients). |
 
 ## Configuration
@@ -89,7 +90,8 @@ npx canons scopes --changed          # which rules apply to my diff?
   "sourceDirs": ["src"],
   "docDirs": ["doc"],
   "budgetBytes": 24576,
-  "ruleNamePattern": "^[a-z-]+$"
+  "ruleNamePattern": "^[a-z-]+$",
+  "updateCheck": true
 }
 ```
 
@@ -98,7 +100,14 @@ npx canons scopes --changed          # which rules apply to my diff?
 - `docDirs` adds directories whose Markdown links `verify` checks. `AGENTS.md` files and rules are always checked (errors), skills too (warnings, since they may be vendored upstream text). Links inside code are ignored.
 - `budgetBytes` limits the root `AGENTS.md` alone (default 24 KiB, at most 32 KiB) so nested instruction files still fit in what Codex loads.
 - `ruleNamePattern` optionally constrains the names of your own top-level rule files.
+- `updateCheck: false` turns the update notice off for the repository (see Updates).
 - `presets` and `hooks` are reserved for later versions and must stay empty / `false`.
+
+## Updates
+
+`canons scopes` and `canons doctor` mention a newer canons version in one line on stderr, at most once a day per version. Agents run `scopes` on every task, so the notice reaches every repository in use; C3 tells them to finish the current task, ask you, and on your consent follow the managed `canons` skill (`.agents/skills/canons/SKILL.md`), which upgrades in a separate change and never commits without your say.
+
+The notice never slows a command down or breaks it: the command only reads a small cache in `~/.cache/canons` (`$XDG_CACHE_HOME`, or `CANONS_CACHE_DIR`). When the cache is a day old, a detached background process asks the npm registry for the `latest` version (honoring `npm_config_registry`) and exits; if it fails (offline, a sandbox, a proxy), nothing is shown and it tries again the next day. Stdout and exit codes never change, and `verify` never touches the network. It is off when `CI` is set, with `CANONS_NO_UPDATE_CHECK=1`, or with `"updateCheck": false`.
 
 ## Clients
 

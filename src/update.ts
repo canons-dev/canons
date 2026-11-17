@@ -35,6 +35,7 @@ import {
   renderLock,
   sha256,
   upsertBlock,
+  type Canon,
   type Lock,
 } from "./content.ts";
 import { listMarkdown } from "./rules.ts";
@@ -101,6 +102,31 @@ export function managedRulePath(config: CanonsConfig, file: string): string {
   return `${config.rulesDir}/${MANAGED_SUBDIR}/${file}`;
 }
 
+export function managedSkillPath(config: CanonsConfig, file: string): string {
+  return `${config.skillsDir}/${MANAGED_SUBDIR}/${file}`;
+}
+
+/** Every managed rule and skill file of `canon`: repo-relative path -> content. */
+export function managedFiles(config: CanonsConfig, canon: Canon): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const [file, text] of canon.rules) files.set(managedRulePath(config, file), text);
+  for (const [file, text] of canon.skills) files.set(managedSkillPath(config, file), text);
+  return files;
+}
+
+/** Markdown files already present in the managed rule and skill directories. */
+export function presentManagedFiles(root: string, config: CanonsConfig): string[] {
+  const present: string[] = [];
+  for (const [dir, toPath] of [
+    [config.rulesDir, managedRulePath],
+    [config.skillsDir, managedSkillPath],
+  ] as const) {
+    const abs = resolve(root, dir, MANAGED_SUBDIR);
+    if (existsSync(abs)) for (const file of listMarkdown(abs)) present.push(toPath(config, file));
+  }
+  return present;
+}
+
 export function update(root: string, options: UpdateOptions = {}): string[] {
   return apply(root, loadConfig(root), options);
 }
@@ -151,26 +177,20 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     if (existsSync(abs) && sha256(readFileSync(abs, "utf8")) !== hash)
       edited.push(path);
   }
-  const managedDir = resolve(root, config.rulesDir, MANAGED_SUBDIR);
-  const known = new Set([
-    ...Object.keys(lock?.files ?? {}),
-    ...[...canon.rules.keys()].map((f) => managedRulePath(config, f)),
-  ]);
-  if (existsSync(managedDir))
-    for (const file of listMarkdown(managedDir)) {
-      const path = managedRulePath(config, file);
-      if (!known.has(path)) edited.push(`${path} (not managed by canons)`);
-    }
+  const shipped = managedFiles(config, canon);
+  const known = new Set([...Object.keys(lock?.files ?? {}), ...shipped.keys()]);
+  for (const path of presentManagedFiles(root, config))
+    if (!known.has(path)) edited.push(`${path} (not managed by canons)`);
   if (edited.length && !options.force)
     throw new Error(
-      `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${config.rulesDir}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
+      `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${config.rulesDir}/${MANAGED_SUBDIR}/ / ${config.skillsDir}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
     );
 
   // Directories and a write probe in each, undone if any of them fails.
   const dirs = [
     ".",
     ...new Set([
-      ...[...canon.rules.keys()].map((f) => posix.dirname(managedRulePath(config, f))),
+      ...[...shipped.keys()].map((path) => posix.dirname(path)),
       config.rulesDir,
       config.skillsDir,
       ...links.map(([link]) => posix.dirname(link)),
@@ -218,10 +238,9 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     log.push(`${rootText ? "updated" : "created"} ${ROOT_FILE}`);
   }
 
-  // Managed rules: write shipped files, remove ones no longer shipped.
+  // Managed rules and skills: write shipped files, remove ones no longer shipped.
   const files: Record<string, string> = {};
-  for (const [file, text] of canon.rules) {
-    const path = managedRulePath(config, file);
+  for (const [path, text] of shipped) {
     const abs = resolve(root, path);
     if (!existsSync(abs) || readFileSync(abs, "utf8") !== text) {
       writeFileSync(abs, text);
@@ -234,13 +253,10 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
       rmSync(resolve(root, path));
       log.push(`removed ${path}`);
     }
-  if (existsSync(managedDir))
-    for (const file of listMarkdown(managedDir)) {
-      const path = managedRulePath(config, file);
-      if (!(path in files)) {
-        rmSync(resolve(root, path));
-        log.push(`removed ${path}`);
-      }
+  for (const path of presentManagedFiles(root, config))
+    if (!(path in files)) {
+      rmSync(resolve(root, path));
+      log.push(`removed ${path}`);
     }
   // Git does not track empty directories; without a placeholder a fresh clone
   // would get a dangling .claude/skills link.
