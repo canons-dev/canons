@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Update notice: `scopes` and `doctor` mention a newer canons version on stderr, at most once a day per version. They only read a local cache; a detached background process refreshes it daily from the npm registry, and every failure is silent. Off in CI, with `CANONS_NO_UPDATE_CHECK=1` or with the new `canons.json` key `updateCheck: false`.
+- New command `canons latest [--json] [--decline <version>]`.
+- canons now manages a skill, `.agents/skills/canons/SKILL.md`: how an agent upgrades canons once the user agrees, as a separate change and without committing unasked. Managed skills are locked and verified like managed rules.
+- C3: when `scopes` mentions a newer version, finish the current task and ask the user; on consent follow the `canons` skill, on refusal run `canons latest --decline <version>`.
+
 ## 0.2.0 (2026-11-17)
 
 Rule content changes: upgrade with `canons update --accept-major` and review the new block.

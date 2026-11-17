@@ -72,6 +72,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 | `canons update [--accept-major] [--force] [--adopt]` | 用已安装的版本重写托管区块、托管规则、客户端软链接和 lock（不会升级 npm 包）。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。`--adopt` 把实体的 `CLAUDE.md`、`.claude/rules`、`.claude/skills` 搬进 `AGENTS.md` / `.agents/` 并建软链接；会覆盖或需要合并不同内容时拒绝。 |
 | `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。 |
 | `canons scopes [--changed] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。 |
+| `canons latest [--json] [--decline <版本>]` | 对比本仓库用的版本和最新发布的版本（联网）：是否破坏性升级、CHANGELOG 在哪。有新版时退出码为 10。`--decline` 让更新提示不再提该版本。 |
 | `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |
 
 ## 配置
@@ -89,7 +90,8 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
   "sourceDirs": ["src"],
   "docDirs": ["doc"],
   "budgetBytes": 24576,
-  "ruleNamePattern": "^[a-z]{6}$"
+  "ruleNamePattern": "^[a-z]{6}$",
+  "updateCheck": true
 }
 ```
 
@@ -98,7 +100,14 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 - `docDirs` 追加需要 `verify` 检查 Markdown 链接的目录。`AGENTS.md` 和规则始终检查（报 error），技能也检查（报 warning，因为可能是 vendor 进来的上游原文）。代码里的链接不检查。
 - `budgetBytes` 只限制根 `AGENTS.md`（默认 24 KiB，最多 32 KiB），给嵌套的指令文件留出 Codex 能加载的空间。
 - `ruleNamePattern` 可选，用来约束项目自己的顶层规则文件名。
+- `updateCheck: false` 为整个仓库关闭更新提示（见「更新」）。
 - `presets` 和 `hooks` 留给后续版本，目前必须保持为空 / `false`。
+
+## 更新
+
+`canons scopes` 和 `canons doctor` 会在 stderr 用一行提示 canons 有新版本，同一版本每天最多一次。agent 每个任务都会跑 `scopes`，所以在用的仓库都能看到；C3 要求 agent 先完成当前任务再问你，你同意后按托管的 `canons` 技能（`.agents/skills/canons/SKILL.md`）升级：升级是独立的改动，没有你的话不提交。
+
+提示不会拖慢或打断命令：命令只读 `~/.cache/canons`（或 `$XDG_CACHE_HOME`、`CANONS_CACHE_DIR`）里的一个小缓存。缓存超过一天时，起一个脱离的后台进程向 npm registry 查 `latest`（遵循 `npm_config_registry`）然后退出；失败（断网、沙箱、代理）就什么也不显示，第二天再试。stdout 和退出码不变，`verify` 从不联网。设置了 `CI`、`CANONS_NO_UPDATE_CHECK=1` 或 `"updateCheck": false` 时关闭。
 
 ## 客户端
 

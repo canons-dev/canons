@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // canons CLI entry. Exit code 0 = ok, 1 = errors (or warnings with --strict).
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verify } from "./verify.ts";
 import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
-import { packageVersion } from "./content.ts";
+import { isBreakingUpgrade, packageName, packageVersion, runnerCommand } from "./content.ts";
 import { doctor } from "./doctor.ts";
 import {
   changedScopePaths,
@@ -13,7 +13,18 @@ import {
   loadScopeRules,
   matchScopeRules,
 } from "./rules.ts";
-import { create, update } from "./update.ts";
+import {
+  cacheDir,
+  changelogUrl,
+  decline,
+  fetchLatest,
+  isNewer,
+  readCache,
+  refreshCache,
+  updateNotice,
+  writeCache,
+} from "./notice.ts";
+import { create, readLock, update } from "./update.ts";
 
 const HELP = `canons ${packageVersion()}
 
@@ -28,10 +39,33 @@ Usage:
   canons verify [--strict]           deterministic hygiene checks (for CI and pre-commit)
   canons scopes [--changed] [--json] <file-or-dir>...
                                      list the rules that apply to the given paths
+  canons latest [--json] [--decline <version>]
+                                     compare with the newest published version (network);
+                                     --decline stops the notice for that version
   canons doctor                      environment diagnostics with fix hints
   canons --version | --help
 
-A rule with no match does not mean "no constraints": the root AGENTS.md still applies.`;
+A rule with no match does not mean "no constraints": the root AGENTS.md still applies.
+scopes and doctor mention a newer canons version from a local cache, refreshed daily
+in the background; set CANONS_NO_UPDATE_CHECK=1 or "updateCheck": false to turn it off.`;
+
+/** The update notice for `root`, or undefined. Never throws, never waits for the network. */
+function noticeFor(root: string): string | undefined {
+  try {
+    const config = loadConfig(root);
+    if (!config.updateCheck) return undefined;
+    const manifest = resolve(root, "package.json");
+    // Not inside canons' own repository.
+    if (existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { name?: string }).name === packageName())
+      return undefined;
+    return updateNotice({
+      installed: readLock(root)?.canons ?? packageVersion(),
+      command: runnerCommand(config.runner),
+    });
+  } catch {
+    return undefined;
+  }
+}
 
 /** Command names before every command had six letters; kept only to point at the new name. */
 const RENAMED: Record<string, string> = { init: "create", sync: "update", check: "verify" };
@@ -51,7 +85,7 @@ function assertFlags(args: string[], allowed: string[]): void {
     throw new Error(`unknown option ${unknown.join(", ")}; see canons --help`);
 }
 
-export function main(argv: string[], cwd = process.cwd()): number {
+export function main(argv: string[], cwd = process.cwd()): number | Promise<number> {
   const args = [...argv];
   const command = args.shift();
   if (!command || command === "--help" || command === "-h") {
@@ -61,6 +95,10 @@ export function main(argv: string[], cwd = process.cwd()): number {
   if (command === "--version" || command === "-v") {
     console.log(packageVersion());
     return 0;
+  }
+  if (command === "__refresh") {
+    // Detached child started by the update notice; see notice.ts.
+    return refreshCache(cacheDir()).then(() => 0);
   }
   const root = findRoot(cwd);
   switch (command) {
@@ -117,6 +155,8 @@ export function main(argv: string[], cwd = process.cwd()): number {
         ]),
       ].sort();
       const rules = matchScopeRules(loadScopeRules(root, config.rulesDir), paths);
+      const notice = noticeFor(root);
+      if (notice) console.error(notice);
       if (args.includes("--json")) {
         console.log(JSON.stringify({ paths, rules }, null, 2));
         return 0;
@@ -132,10 +172,40 @@ export function main(argv: string[], cwd = process.cwd()): number {
       }
       return 0;
     }
-    case "doctor":
+    case "doctor": {
       assertFlags(args, []);
       for (const line of doctor(root)) console.log(line);
+      const notice = noticeFor(root);
+      if (notice) console.log(`note  ${notice}`);
       return 0;
+    }
+    case "latest": {
+      const declined = takeOption(args, "--decline");
+      assertFlags(args, ["--json"]);
+      if (declined !== undefined) {
+        decline(declined);
+        console.log(`canons ${declined} will not be mentioned again; run "canons latest" to check by hand.`);
+        return 0;
+      }
+      const installed = readLock(root)?.canons ?? packageVersion();
+      return fetchLatest().then((latest) => {
+        const dir = cacheDir();
+        writeCache(dir, { ...readCache(dir), latest, checkedAt: Date.now() });
+        const newer = isNewer(latest, installed);
+        const breaking = newer && isBreakingUpgrade(installed, latest);
+        const changelog = changelogUrl();
+        if (args.includes("--json"))
+          console.log(JSON.stringify({ installed, latest, newer, breaking, changelog }, null, 2));
+        else if (!newer) console.log(`canons ${installed} is the latest version.`);
+        else {
+          console.log(`canons ${latest} is available; this repository uses ${installed}.`);
+          console.log(breaking ? "breaking upgrade: rule content changed; review the changelog and update with --accept-major" : "non-breaking upgrade");
+          if (changelog) console.log(`changelog: ${changelog}`);
+          console.log("To upgrade, follow the canons skill (.agents/skills/canons/SKILL.md) once the user agrees.");
+        }
+        return newer ? 10 : 0;
+      });
+    }
     default:
       if (command in RENAMED)
         throw new Error(`"${command}" is now "${RENAMED[command]}"; see canons --help`);
@@ -147,10 +217,15 @@ const invokedDirectly =
   !!process.argv[1] &&
   realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
 if (invokedDirectly) {
-  try {
-    process.exitCode = main(process.argv.slice(2));
-  } catch (error) {
+  const fail = (error: unknown) => {
     console.error(`canons: ${(error as Error).message}`);
     process.exitCode = 1;
+  };
+  try {
+    Promise.resolve(main(process.argv.slice(2))).then((code) => {
+      process.exitCode = code;
+    }, fail);
+  } catch (error) {
+    fail(error);
   }
 }

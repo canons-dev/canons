@@ -11,7 +11,7 @@ import { listMarkdown } from "./rules.ts";
 // (the build copies src/canon to out/canon).
 export const CONTENT_ROOT = dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = resolve(CONTENT_ROOT, "..");
-/** Managed rule files live in this subdirectory of the consumer's rulesDir. */
+/** Managed rules and skills live in this subdirectory of the consumer's rulesDir and skillsDir. */
 export const MANAGED_SUBDIR = "canons";
 
 export function sha256(text: string): string {
@@ -57,6 +57,8 @@ export interface Canon {
   block: string;
   /** Rule files keyed by their path below `<rulesDir>/canons/`. */
   rules: Map<string, string>;
+  /** Skill files keyed by their path below `<skillsDir>/canons/`. */
+  skills: Map<string, string>;
   /** Project settings and rules skeleton for a newly created AGENTS.md. */
   project: string;
 }
@@ -77,16 +79,22 @@ export function loadCanon(
     throw new Error(
       `locale "${locale}" is not shipped; available: ${availableLocales(root).join(", ")}`,
     );
-  const rules = new Map<string, string>();
-  const rulesDir = resolve(dir, "rules");
-  if (existsSync(rulesDir))
-    for (const file of listMarkdown(rulesDir))
-      rules.set(file, withRunner(readFileSync(resolve(rulesDir, file), "utf8")));
+  const load = (sub: string) => {
+    const files = new Map<string, string>();
+    const at = resolve(dir, sub);
+    if (existsSync(at))
+      for (const file of listMarkdown(at))
+        files.set(file, withRunner(readFileSync(resolve(at, file), "utf8")));
+    return files;
+  };
+  const rules = load("rules");
+  const skills = load("skills");
   return {
     version: packageVersion(resolve(root, "..")),
     locale,
     block: withRunner(readFileSync(resolve(dir, "AGENTS.block.md"), "utf8").trim()),
     rules,
+    skills,
     project: readFileSync(resolve(dir, "AGENTS.project.md"), "utf8"),
   };
 }

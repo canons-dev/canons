@@ -6,7 +6,7 @@
 
 - **C1** 每份约定只有一个可编辑的真源，各客户端读到的才是同一份：`AGENTS.md`、`.agents/rules/`、`.agents/skills/`。客户端入口（`CLAUDE.md`、`.claude/rules`、`.claude/skills`）是指向它们的相对软链接；复制或反向链接都会漂移。
 - **C2** 约束放在与生效范围对应的层级：红线放本文件，子系统约束放带 `paths` frontmatter 的规则，多步流程做成技能。红线不下放，下层不保证被加载。
-- **C3** 动手前知道哪些规则约束要改的文件，收尾时实际 diff 满足它们。客户端原生加载规则不完整，以 `npx canons scopes <路径>...`（新文件传拟创建的路径）和 `npx canons scopes --changed` 为准。没有命中时本文件照样适用。
+- **C3** 动手前知道哪些规则约束要改的文件，收尾时实际 diff 满足它们。客户端原生加载规则不完整，以 `npx canons scopes <路径>...`（新文件传拟创建的路径）和 `npx canons scopes --changed` 为准。没有命中时本文件照样适用。它提示 canons 有新版本时，先完成当前任务再问用户：同意就按 `canons` 技能升级，拒绝就运行 `npx canons latest --decline <版本>`。
 - **C4** 本文件要被每个客户端完整加载，所以不超字节预算（`npx canons verify` 检查）。腾空间靠精简措辞或把理由移进文档，绝不删红线。
 
 ### 知识与文档

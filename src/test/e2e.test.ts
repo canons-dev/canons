@@ -27,6 +27,9 @@ import {
 } from "../rules.ts";
 import { create, update } from "../update.ts";
 
+// The update notice reads and refreshes a per-user cache; keep tests away from it.
+process.env.CANONS_NO_UPDATE_CHECK = "1";
+
 function fixture(): string {
   const root = mkdtempSync(join(tmpdir(), "canons-e2e-"));
   cpSync(resolve(PACKAGE_ROOT, "src/test/fixtures/minimal"), root, { recursive: true });
@@ -51,11 +54,12 @@ test("update writes block, managed rules, links and lock; verify passes", () => 
   assert.equal(readlinkSync(join(root, ".claude/rules")), "../.agents/rules");
   assert.equal(readlinkSync(join(root, ".claude/skills")), "../.agents/skills");
   readFileSync(join(root, ".agents/rules/canons/layout.md"), "utf8");
-  readFileSync(join(root, ".agents/skills/.gitkeep"), "utf8");
+  assert.match(readFileSync(join(root, ".agents/skills/canons/SKILL.md"), "utf8"), /^---\nname: canons\n/);
   const lock = JSON.parse(readFileSync(join(root, "canons.lock.json"), "utf8"));
   assert.deepEqual(Object.keys(lock.files), [
     ".agents/rules/canons/layout.md",
     ".agents/rules/canons/vendor.md",
+    ".agents/skills/canons/SKILL.md",
   ]);
   assert.deepEqual(verify(root), { errors: [], warnings: [] });
   assert.deepEqual(update(root), [], "second update is a no-op");
@@ -318,4 +322,50 @@ test("links are checked in AGENTS.md, skills and docDirs, not inside code", () =
   mkdirSync(join(root, ".agents/skills/ship"), { recursive: true });
   writeFileSync(join(root, ".agents/skills/ship/SKILL.md"), "[run](missing.sh)\n");
   assert.match(verify(root).warnings.join("\n"), /SKILL\.md: broken link missing\.sh/);
+});
+
+test("the managed skill is guarded like managed rules", () => {
+  const root = synced();
+  const skill = join(root, ".agents/skills/canons/SKILL.md");
+  writeFileSync(skill, `${readFileSync(skill, "utf8")}\nlocal note\n`);
+  assert.match(errorsOf(root), /\.agents\/skills\/canons\/SKILL\.md was edited by hand/);
+  assert.throws(() => update(root), /local edits to managed content/);
+  writeFileSync(join(root, ".agents/skills/canons/extra.md"), "mine\n");
+  assert.match(errorsOf(root), /extra\.md is not managed by canons/);
+});
+
+test("scopes adds the update notice on stderr only; stdout and the exit code are unchanged", () => {
+  const root = synced();
+  const dir = mkdtempSync(join(tmpdir(), "canons-cache-"));
+  writeFileSync(join(dir, "latest.json"), JSON.stringify({ latest: "99.0.0", checkedAt: Date.now() }));
+  const saved = { ...process.env };
+  const out: string[] = [];
+  const err: string[] = [];
+  const log = console.log;
+  const error = console.error;
+  console.log = (line: string) => out.push(line);
+  console.error = (line: string) => err.push(line);
+  try {
+    delete process.env.CANONS_NO_UPDATE_CHECK;
+    delete process.env.CI;
+    process.env.CANONS_CACHE_DIR = dir;
+    assert.equal(main(["scopes", "--json", "src/api/hello.ts"], root), 0);
+    const withNotice = out.join("\n");
+    assert.match(err.join("\n"), /canons 99\.0\.0 is available/);
+
+    out.length = 0;
+    err.length = 0;
+    process.env.CANONS_NO_UPDATE_CHECK = "1";
+    assert.equal(main(["scopes", "--json", "src/api/hello.ts"], root), 0);
+    assert.equal(out.join("\n"), withNotice, "--json output is identical");
+    assert.deepEqual(err, []);
+
+    delete process.env.CANONS_NO_UPDATE_CHECK;
+    assert.equal(main(["latest", "--decline", "99.0.0"], root), 0);
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, "latest.json"), "utf8")).declined, ["99.0.0"]);
+  } finally {
+    console.log = log;
+    console.error = error;
+    process.env = saved;
+  }
 });

@@ -31,7 +31,7 @@ import {
   repoFiles,
   staticPrefix,
 } from "./rules.ts";
-import { clientLinks, managedRulePath, readLock } from "./update.ts";
+import { clientLinks, presentManagedFiles, readLock } from "./update.ts";
 
 export interface VerifyResult {
   errors: string[];
@@ -172,16 +172,12 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
       if (!existsSync(abs)) errors.push(`${path} is missing; run "canons update"`);
       else if (sha256(readFileSync(abs, "utf8")) !== hash)
         errors.push(
-          `${path} was edited by hand; put project rules outside ${config.rulesDir}/${MANAGED_SUBDIR}/`,
+          `${path} was edited by hand; put project rules and skills outside the ${MANAGED_SUBDIR}/ directories`,
         );
     }
-    const managedDir = resolve(root, config.rulesDir, MANAGED_SUBDIR);
-    if (existsSync(managedDir))
-      for (const file of listMarkdown(managedDir)) {
-        const path = managedRulePath(config, file);
-        if (!(path in lock.files))
-          errors.push(`${path} is not managed by canons; move it to ${config.rulesDir}/`);
-      }
+    for (const path of presentManagedFiles(root, config))
+      if (!(path in lock.files))
+        errors.push(`${path} is not managed by canons; move it out of the ${MANAGED_SUBDIR}/ directory`);
   }
 
   // The local runner's `npx canons` only resolves when the package is installed.
