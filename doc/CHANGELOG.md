@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.1 (2026-11-17)
+
+This release changes the managed rules (C3) and adds a managed skill, but is published as a patch, so `update` applies it without `--accept-major`. Review the new block and `.agents/skills/canons/SKILL.md` after upgrading.
 
 - Update notice: `scopes` and `doctor` mention a newer canons version on stderr, at most once a day per version. They only read a local cache; a detached background process refreshes it daily from the npm registry, and every failure is silent. Off in CI, with `CANONS_NO_UPDATE_CHECK=1` or with the new `canons.json` key `updateCheck: false`.
 - New command `canons latest [--json] [--decline <version>]`.
