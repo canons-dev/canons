@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks.
+
 ## 0.2.1 (2026-11-17)
 
 This release changes the managed rules (C3) and adds a managed skill, but is published as a patch, so `update` applies it without `--accept-major`. Review the new block and `.agents/skills/canons/SKILL.md` after upgrading.
