@@ -3,6 +3,7 @@
 ## Unreleased
 
 - The managed rules state outcomes instead of steps: each item says what it wants and why, and any method it names (`git status`, the option count, the settlement table, the handoff fields) is a reference an agent may improve on. Boundaries that are the user's or the project's call (C8, C20, C21) now say so and why. Rule ids and scope are unchanged.
+- C9 asks agents to start from the latest upstream code (fetch, then fast-forward or branch from the fresh base) and to ask the user when that would need a merge or rebase or touch someone else's changes. C8 no longer lists `fetch`, and exempts this sync.
 
 ## 0.1.5 (2026-11-16)
 
