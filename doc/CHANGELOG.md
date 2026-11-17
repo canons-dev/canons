@@ -7,6 +7,7 @@
 - The managed block is condensed: with outcomes and reasons it is still slightly smaller than in 0.1.5, leaving room in the root budget.
 - `create` and `update` take `--adopt`: a real `CLAUDE.md`, `.claude/rules` or `.claude/skills` is moved into `AGENTS.md` / `.agents/` and replaced by its link. It refuses when that would overwrite or merge differing content. `doctor` points at it.
 - `verify` checks links in every `AGENTS.md` (errors) and in skills (warnings), not only in rules; links inside code are ignored. New `canons.json` key `docDirs` adds directories to check.
+- C14 asks for an explicit settlement verdict at the end of every stage, non-interactive runs included, and counts uncommitted changes and an unsynced upstream as open. In acceptance runs Codex had stated no status at all; with this wording it states done or pending, what remains and who acts next.
 - Repository: npm scripts and GitHub workflows use six-letter names (`bundle`, `typing`, `checks`; workflows `checks.yml` and `upload.yml`); `tsconfig.json` extends `@tsconfig/node22` and `@tsconfig/node-ts`.
 
 ## 0.1.5 (2026-11-16)
