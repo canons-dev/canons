@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The managed rules state outcomes instead of steps: each item says what it wants and why, and any method it names (`git status`, the option count, the settlement table, the handoff fields) is a reference an agent may improve on. Boundaries that are the user's or the project's call (C8, C20, C21) now say so and why. Rule ids and scope are unchanged.
+
 ## 0.1.5 (2026-11-16)
 
 - `verify` resolves rule links whose path holds parentheses, such as framework route groups (`../../src/app/(app)/page.tsx`, bare or in `<...>`), and links with a title.

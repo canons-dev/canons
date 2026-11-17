@@ -19,6 +19,7 @@ Rule content lives in `src/canon/core/locales/<locale>/`. English is the source 
 
 - Every rule bullet starts with a stable id (`**C1**`, `**L1**`, `**V1**`). Ids run 1..n per prefix; renumbering is a breaking change.
 - Every locale mirrors the English files, `paths`, ids and heading levels exactly; `src/test/locales.test.ts` enforces this. Update all locales in the same pull request, or mark the translation as pending in the PR so a native speaker can follow up before release.
+- Write each item as the outcome it wants and why; a method is only an example an agent may improve on. Authority boundaries stay hard and say who decides. See [doc/DESIGN.md](../doc/DESIGN.md).
 - Shipped content must stay project-neutral: no product names, brands or internal tools.
 
 In the pull request description, state the reason, who is affected, and the semver level:
