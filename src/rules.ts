@@ -2,8 +2,8 @@
 // Read-only, no network. Unsupported syntax must throw: a silently ignored
 // declaration means a rule that never fires.
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, posix, relative, resolve, sep } from "node:path";
 
 /** Parses a top-level YAML block list (`key:` followed by `  - item` lines). */
 export function parseListKey(source: string, key: string): string[] {
@@ -200,17 +200,7 @@ export function changedScopePaths(root: string): string[] {
   // --no-renames keeps both the old and new path of a rename.
   return [
     ...new Set([
-      ...(hasHead
-        ? gitPaths(root, [
-            "diff",
-            "--cached",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            "HEAD",
-            "--",
-          ])
-        : gitPaths(root, ["diff", "--cached", "--name-only", "-z", "--"])),
+      ...gitPaths(root, ["diff", "--cached", "--name-only", "--no-renames", "-z", ...(hasHead ? ["HEAD"] : []), "--"]),
       ...gitPaths(root, ["diff", "--name-only", "--no-renames", "-z", "--"]),
       ...gitPaths(root, ["ls-files", "--others", "--exclude-standard", "-z"]),
     ]),
@@ -240,4 +230,42 @@ export function expandScopePaths(
       }),
     ),
   ].sort();
+}
+
+/** "." and every directory down to the one holding `path`, root first. */
+export function ancestors(path: string): string[] {
+  const dirs: string[] = [];
+  for (let dir = posix.dirname(path); ; dir = posix.dirname(dir)) {
+    dirs.unshift(dir);
+    if (dir === ".") break;
+  }
+  return dirs;
+}
+
+export interface Effective {
+  file: string;
+  bytes: number;
+}
+
+/**
+ * Every instruction file a client loads for `paths`: the AGENTS.md files from
+ * the root down to each path's directory (the chain Codex reads), then the
+ * matched rules. Skills load on demand and are not listed.
+ */
+export function effectiveInstructions(
+  root: string,
+  paths: string[],
+  rules: ScopeMatch[],
+): Effective[] {
+  const chain = new Set<string>();
+  for (const path of paths)
+    for (const dir of ancestors(path)) {
+      const file = posix.join(dir, "AGENTS.md");
+      if (existsSync(resolve(root, file))) chain.add(file);
+    }
+  const ordered = [...chain].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+  return [...ordered, ...rules.map((rule) => rule.file)].map((file) => ({
+    file,
+    bytes: statSync(resolve(root, file)).size,
+  }));
 }

@@ -14,5 +14,5 @@ description: 用户同意后，把 canons（AGENTS.md 与 .agents/ 里的通用 
   2. 有 package.json：`npm install --save-dev @canons-dev/canons@<版本>`；没有就把后面的命令写成 `npx -y @canons-dev/canons@<版本>`。
   3. 运行 `update`（第二次同意后才加 `--accept-major`），再运行 `verify --strict` 和项目自己的检查。
 - **被挡住时**（没有网络，或沙箱保护 `.agents/`，Codex 就是这样）：说明卡在哪、用户可以怎么做，然后停下。当前任务不受影响。
-- **Git** 按 C8：用户要求了才提交、推送或建 PR；同意升级不等于同意提交。
-- **汇报**版本、改了什么（`git diff --stat`）、验证结果、PR 链接（如有）和结清判定（C14）。
+- **Git** 按 C8；同意升级不等于同意提交。
+- **汇报**按 C14，附上版本、`git diff --stat` 和验证结果。

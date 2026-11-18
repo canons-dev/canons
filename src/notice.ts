@@ -10,7 +10,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isBreakingUpgrade, packageName, PACKAGE_ROOT } from "./content.ts";
+import { isBreakingUpgrade, manifest, packageName } from "./content.ts";
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 const CACHE_FILE = "latest.json";
@@ -179,15 +179,8 @@ export function updateNotice(options: NoticeOptions): string | undefined {
 }
 
 export function changelogUrl(): string | undefined {
-  try {
-    const manifest = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as {
-      repository?: { url?: string };
-    };
-    const m = /github\.com[/:]([^/]+\/[^/.]+)/.exec(manifest.repository?.url ?? "");
-    return m ? `https://github.com/${m[1]}/blob/main/doc/CHANGELOG.md` : undefined;
-  } catch {
-    return undefined;
-  }
+  const m = /github\.com[/:]([^/]+\/[^/.]+)/.exec(manifest()?.repository?.url ?? "");
+  return m ? `https://github.com/${m[1]}/blob/main/doc/CHANGELOG.md` : undefined;
 }
 
 /** Records that the user declined `version`, so the notice stops raising it. */

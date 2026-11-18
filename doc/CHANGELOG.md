@@ -2,7 +2,23 @@
 
 ## Unreleased
 
-- New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks.
+Rule content changes: upgrade with `canons update --accept-major` and review the new block.
+
+- New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks. C22 also asks for surgical changes (every changed line traces to the request, the surrounding style kept, only the change's own leftovers removed) and for stated assumptions and simpler alternatives, with no speculative abstraction, configuration or error handling.
+- C15: decide before starting which checks will show the change works, and run them before finishing. `AGENTS.md` records the exact build, test and lint commands and how to run one test; a new `AGENTS.md` gets a Verification line under Project settings.
+- C6: one term per concept; leave out what agents can infer; a rule that allows no exception becomes a deterministic check instead of louder wording.
+- New C23: long or complex work that would crowd or steer the main conversation goes to a sub-agent or separate session when the client offers one; take back the result, then close or archive it and say so in the settlement.
+- New C24: replies lead with results, key conclusions and the user's decisions; repeated explanations, needless disclaimers, generic reminders and unrelated alternatives are left out, and supplements worth keeping go in a file. Unverified marks (C11) and the settlement (C14) stay.
+- C8: `AGENTS.md` records the Git flow (base branch, PR target, branch prefix, who merges). C10: when the sound long-term solution costs clearly more than a shortcut, present both instead of taking the shortcut. C11: never invent results; numbers and conclusions cite their source. C20: refer to another repository's file as `repo:path`.
+- New section "Data and operation": C25 failures reach a person (log-only handling and user-input failures count); C26 tests and verification use only designated test data and accounts, named in `AGENTS.md`; C27 changes stay compatible with what is already running (shared databases, interfaces and configuration change by addition); C28 secrets stay out of code, docs and instruction files, and only values that differ between environments go into environment variables.
+- A new `AGENTS.md` gets Git flow and Test data lines under Project settings.
+- `verify` also warns, in project instruction text, about citing `CLAUDE.md` as a source and about dated history (a date next to words such as "renamed", "formerly", "曾", "改为").
+- Condensed without changing meaning: C8 and C16 list representative examples, C13 says "the temporary directory" (C7) instead of `tmp/`, L2 no longer repeats C2, and the managed skill refers to C8 and C14 instead of restating them.
+- Fixes: `verify` reports a corrupt `canons.lock.json` instead of crashing; a `CLAUDE.md` directory is refused before anything is written; npm flags before a script name (`npm run -s build`) are not taken for the script; a quoted skill `description` containing ` #` is read whole.
+- The new and extended items are worded tightly so the zh-CN block grows by about 2.3 KB in total; check that your root `AGENTS.md` still fits its budget after upgrading.
+- `CLAUDE.md` is now a one-line file importing `AGENTS.md` (`@AGENTS.md`) instead of a symlink. `update` replaces the old symlink; `verify` reports a symlink or any other content. `.claude/rules` and `.claude/skills` stay symlinks.
+- `verify` checks skills against the Agent Skills format (errors: frontmatter, `name` matching its directory and its character rules, `description` length) and warns about rules and `SKILL.md` over 500 lines, bundled skill files linking more than one level deep, and, in project instruction text, `npm run` scripts missing from the nearest `package.json` and code-span paths that no longer exist.
+- `scopes --effective` lists every instruction file loaded for the given paths (the `AGENTS.md` chain and matched rules) with byte counts.
 
 ## 0.2.1 (2026-11-17)
 

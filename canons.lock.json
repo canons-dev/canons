@@ -2,10 +2,10 @@
   "lockfileVersion": 1,
   "canons": "0.2.1",
   "locale": "en",
-  "block": "f7632e57b2291f98fd92ebea1c41f5fc74932e8b00ce00e1617b85ea180be565",
+  "block": "5e3029afc41f8e2a36ef92fa5775f8b08b41dcb029124619e8db82bb3ec5d21b",
   "files": {
-    ".agents/rules/canons/layout.md": "60b43e1b182472231f302241b4d0a1b3e38d2bdf759e12c7b69cbee0883982dd",
+    ".agents/rules/canons/layout.md": "21b56ff2f242765875a753cc9637c0f9d45e4aa87e423601c63c1bfb0ed4ad1b",
     ".agents/rules/canons/vendor.md": "e6362775c16c4c0c19d16a65cfdc140c24ba283e325aede3467384c1f75f4b14",
-    ".agents/skills/canons/SKILL.md": "87dea5c10805339f33cffbfdbecd2ff72e6a6f24e3f8de6e9fb335f06056abb3"
+    ".agents/skills/canons/SKILL.md": "01f43576cfc70e909a7656055faa71e2586f69c7ab4ce6cf66cfcce4754a83bd"
   }
 }

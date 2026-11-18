@@ -11,6 +11,7 @@ import {
   readdirSync,
   readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,6 +27,7 @@ import {
   matchScopeRules,
 } from "../rules.ts";
 import { create, update } from "../update.ts";
+import { doctor } from "../doctor.ts";
 
 // The update notice reads and refreshes a per-user cache; keep tests away from it.
 process.env.CANONS_NO_UPDATE_CHECK = "1";
@@ -50,7 +52,8 @@ test("update writes block, managed rules, links and lock; verify passes", () => 
   const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
   assert.match(agents, /^# Example service\n\n<!-- canons:begin version=/);
   assert.match(agents, /## Project rules/, "project text kept");
-  assert.equal(readlinkSync(join(root, "CLAUDE.md")), "AGENTS.md");
+  assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+  assert.equal(lstatSync(join(root, "CLAUDE.md")).isFile(), true);
   assert.equal(readlinkSync(join(root, ".claude/rules")), "../.agents/rules");
   assert.equal(readlinkSync(join(root, ".claude/skills")), "../.agents/skills");
   readFileSync(join(root, ".agents/rules/canons/layout.md"), "utf8");
@@ -135,8 +138,16 @@ test("root budget, broken links, naming and copies instead of links", () => {
 
   rmSync(join(root, "CLAUDE.md"));
   writeFileSync(join(root, "CLAUDE.md"), "copy\n");
-  assert.match(errorsOf(root), /CLAUDE\.md must be a symlink/);
-  assert.throws(() => update(root), /exists but is not a symlink/);
+  assert.match(errorsOf(root), /CLAUDE\.md must hold only the import "@AGENTS\.md"/);
+  assert.throws(() => update(root), /CLAUDE\.md exists with its own content/);
+
+  // The symlink adapter of earlier versions is replaced by the import.
+  rmSync(join(root, "CLAUDE.md"));
+  symlinkSync("AGENTS.md", join(root, "CLAUDE.md"));
+  assert.match(errorsOf(root), /CLAUDE\.md is a symlink; run "canons update"/);
+  assert.ok(update(root).includes("wrote CLAUDE.md (imports AGENTS.md)"));
+  assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
+  assert.equal(lstatSync(join(root, "CLAUDE.md")).isSymbolicLink(), false);
 });
 
 test("create creates canons.json in the chosen locale; codex-only skips links", () => {
@@ -180,7 +191,7 @@ test("a refused create or update changes nothing", () => {
   const root = mkdtempSync(join(tmpdir(), "canons-refuse-"));
   execFileSync("git", ["init", "-q"], { cwd: root });
   writeFileSync(join(root, "CLAUDE.md"), "own notes\n");
-  assert.throws(() => create(root), /CLAUDE\.md exists but is not a symlink/);
+  assert.throws(() => create(root), /CLAUDE\.md exists with its own content/);
   assert.deepEqual(readdirSync(root).sort(), [".git", "CLAUDE.md"]);
 
   rmSync(join(root, "CLAUDE.md"));
@@ -264,7 +275,7 @@ test("--adopt moves real client files and directories into place", () => {
   mkdirSync(join(root, ".claude/rules"), { recursive: true });
   writeFileSync(join(root, ".claude/rules/apis.md"), '---\npaths:\n  - "CLAUDE.md"\n---\n\n# APIs\n');
   mkdirSync(join(root, ".claude/skills/deploy"), { recursive: true });
-  writeFileSync(join(root, ".claude/skills/deploy/SKILL.md"), "---\nname: deploy\n---\n");
+  writeFileSync(join(root, ".claude/skills/deploy/SKILL.md"), "---\nname: deploy\ndescription: Deploy the service.\n---\n");
 
   assert.throws(() => create(root), /Rerun with --adopt/);
   assert.deepEqual(readdirSync(root).sort(), [".claude", ".git", "CLAUDE.md"], "refusal changes nothing");
@@ -275,7 +286,7 @@ test("--adopt moves real client files and directories into place", () => {
   const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
   assert.match(agents, /^# Service\n\n<!-- canons:begin/);
   assert.match(agents, /Project notes\./);
-  assert.equal(readlinkSync(join(root, "CLAUDE.md")), "AGENTS.md");
+  assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
   assert.equal(readlinkSync(join(root, ".claude/rules")), "../.agents/rules");
   assert.equal(readlinkSync(join(root, ".claude/skills")), "../.agents/skills");
   readFileSync(join(root, ".agents/rules/apis.md"), "utf8");
@@ -290,11 +301,11 @@ test("--adopt refuses to overwrite or merge diverging content", () => {
   writeFileSync(join(root, "CLAUDE.md"), "different notes\n");
   assert.throws(() => update(root, { adopt: true }), /both exist with different content/);
 
-  // An identical copy is simply replaced by the link.
+  // An identical copy is simply replaced by the import.
   rmSync(join(root, "CLAUDE.md"));
   writeFileSync(join(root, "CLAUDE.md"), readFileSync(join(root, "AGENTS.md"), "utf8"));
   update(root, { adopt: true });
-  assert.equal(readlinkSync(join(root, "CLAUDE.md")), "AGENTS.md");
+  assert.equal(readFileSync(join(root, "CLAUDE.md"), "utf8"), "@AGENTS.md\n");
 
   rmSync(join(root, ".claude/rules"));
   mkdirSync(join(root, ".claude/rules"));
@@ -320,7 +331,7 @@ test("links are checked in AGENTS.md, skills and docDirs, not inside code", () =
   assert.match(errorsOf(root), /doc\/guide\.md: broken link gone\.md/);
 
   mkdirSync(join(root, ".agents/skills/ship"), { recursive: true });
-  writeFileSync(join(root, ".agents/skills/ship/SKILL.md"), "[run](missing.sh)\n");
+  writeFileSync(join(root, ".agents/skills/ship/SKILL.md"), "---\nname: ship\ndescription: Ship it.\n---\n\n[run](missing.sh)\n");
   assert.match(verify(root).warnings.join("\n"), /SKILL\.md: broken link missing\.sh/);
 });
 
@@ -368,4 +379,170 @@ test("scopes adds the update notice on stderr only; stdout and the exit code are
     console.error = error;
     process.env = saved;
   }
+});
+
+test("skills follow the Agent Skills format; long files and nested references warn", () => {
+  const root = synced();
+  const write = (path: string, text: string) => {
+    mkdirSync(join(root, path, ".."), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  write(".agents/skills/bare/SKILL.md", "# no frontmatter\n");
+  write(".agents/skills/named/SKILL.md", "---\nname: other\n---\n");
+  write(".agents/skills/Bad--name/SKILL.md", `---\nname: Bad--name\ndescription: >\n  ${"x".repeat(1025)}\n---\n`);
+  write(".agents/skills/fine/SKILL.md", '---\nname: fine\ndescription: "Does a thing: well."\n---\n\nSee [ref](ref.md) and [docs](../../../AGENTS.md).\n');
+  write(".agents/skills/fine/ref.md", "[deeper](deep.md)\n");
+  write(".agents/skills/fine/deep.md", "end\n");
+  const { errors, warnings } = verify(root);
+  const text = errors.join("\n");
+  assert.match(text, /bare\/SKILL\.md: no YAML frontmatter/);
+  assert.match(text, /named\/SKILL\.md: name "other" must match its directory name "named"/);
+  assert.match(text, /named\/SKILL\.md: frontmatter has no description/);
+  assert.match(text, /Bad--name\/SKILL\.md: name "Bad--name" must use lowercase letters/);
+  assert.match(text, /Bad--name\/SKILL\.md: description is longer than 1024/);
+  assert.doesNotMatch(text, /fine\/SKILL\.md/);
+  assert.deepEqual(
+    warnings.filter((w) => w.includes("fine/")),
+    [".agents/skills/fine/SKILL.md: ref.md links on to deep.md; keep references one level deep from SKILL.md"],
+    "links out of the skill directory do not count",
+  );
+
+  write(".agents/skills/fine/SKILL.md", `---\nname: fine\ndescription: Fine.\n---\n${"line\n".repeat(500)}`);
+  write(".agents/rules/huge.md", `---\npaths:\n  - "src/**"\n---\n${"- item\n".repeat(500)}`);
+  const long = verify(root).warnings.join("\n");
+  assert.match(long, /fine\/SKILL\.md: 504 lines, over 500/);
+  assert.match(long, /huge\.md: 504 lines, over 500/);
+});
+
+test("verify warns about scripts and paths that project instructions name but no longer exist", () => {
+  const root = synced();
+  const agentsPath = join(root, "AGENTS.md");
+  writeFileSync(
+    agentsPath,
+    `${readFileSync(agentsPath, "utf8")}
+- Run \`npm run lint\` and \`npm test\`; \`npm run -s test\`, \`npm run --silent test\`; \`npm run build -w web\`, \`npm --prefix web run build\` and \`cd web && npm run build\` are another package.
+- Handlers: \`src/api/\`, \`src/gone.ts\`, \`src/api/hello.ts:3\`, \`next/server.js\`, \`@scope/pkg\`, \`../sibling/x.md\`, \`tmp/notes.md\`, \`src/**\`.
+
+\`\`\`sh
+npm run deploy
+\`\`\`
+`,
+  );
+  writeFileSync(join(root, ".gitignore"), "tmp/\n");
+  const warnings = verify(root).warnings.filter((w) => w.startsWith("AGENTS.md"));
+  assert.deepEqual(warnings.sort(), [
+    'AGENTS.md: `npm run deploy` has no "deploy" script in package.json',
+    'AGENTS.md: `npm run lint` has no "lint" script in package.json',
+    "AGENTS.md: `src/gone.ts` does not exist",
+  ]);
+  assert.deepEqual(
+    verify(root).warnings.filter((w) => w.includes("canons/")),
+    [],
+    "managed content is not checked",
+  );
+
+  // A nested package.json answers for files below it; skill paths also resolve from the skill.
+  mkdirSync(join(root, "web/.agents"), { recursive: true });
+  writeFileSync(join(root, "web/package.json"), '{"scripts":{"build":"x"}}');
+  writeFileSync(join(root, "web/AGENTS.md"), "Run `npm run build` and `npm run lint`.\n");
+  mkdirSync(join(root, ".agents/skills/ship/scripts"), { recursive: true });
+  writeFileSync(join(root, ".agents/skills/ship/scripts/run.sh"), "");
+  writeFileSync(
+    join(root, ".agents/skills/ship/SKILL.md"),
+    "---\nname: ship\ndescription: Ship.\n---\n\nRun `scripts/run.sh`, not `scripts/old.sh`.\n",
+  );
+  const nested = verify(root).warnings.filter((w) => w.startsWith("web/") || w.includes("ship/"));
+  assert.deepEqual(nested.sort(), [
+    ".agents/skills/ship/SKILL.md: `.agents/skills/ship/scripts/old.sh` does not exist",
+    'web/AGENTS.md: `npm run lint` has no "lint" script in web/package.json',
+  ]);
+
+  // An unparsable package.json has no scripts, so every one is reported.
+  writeFileSync(join(root, "web/package.json"), "{");
+  assert.match(verify(root).warnings.join("\n"), /web\/AGENTS\.md: `npm run build` has no "build" script/);
+});
+
+test("a corrupt lock file is reported, not a crash", () => {
+  const root = synced();
+  for (const text of ["null", "{", "[]"]) {
+    writeFileSync(join(root, "canons.lock.json"), text);
+    assert.match(errorsOf(root), /canons\.lock\.json is not a valid canons lock file/);
+    assert.throws(() => update(root), /not a valid canons lock file/);
+  }
+});
+
+test("a CLAUDE.md directory is refused before anything is written", () => {
+  const root = synced();
+  rmSync(join(root, "CLAUDE.md"));
+  mkdirSync(join(root, "CLAUDE.md"));
+  writeFileSync(join(root, "CLAUDE.md/notes.md"), "x\n");
+  const before = readFileSync(join(root, "AGENTS.md"), "utf8");
+  assert.throws(() => update(root, { adopt: true }), /CLAUDE\.md is not a regular file/);
+  assert.equal(readFileSync(join(root, "AGENTS.md"), "utf8"), before);
+  assert.match(errorsOf(root), /CLAUDE\.md must hold only the import/);
+});
+
+test("doctor points real client files at --adopt", () => {
+  const root = synced();
+  assert.ok(!doctor(root).some((line) => line.includes("--adopt")), "a clean setup needs no fix");
+  writeFileSync(join(root, "CLAUDE.md"), "own notes\n");
+  assert.ok(doctor(root).some((line) => line.startsWith("fix   CLAUDE.md is a real file") && line.includes("--adopt")));
+  writeFileSync(join(root, "canons.json"), "{");
+  assert.ok(doctor(root).some((line) => line.startsWith("fix   canons.json is not valid JSON")));
+});
+
+test("scopes --effective lists the AGENTS.md chain and matched rules with byte counts", () => {
+  const root = synced();
+  mkdirSync(join(root, "src/api/v2"), { recursive: true });
+  writeFileSync(join(root, "src/api/AGENTS.md"), "# API\n");
+  const out: string[] = [];
+  const log = console.log;
+  console.log = (line: string) => out.push(line);
+  try {
+    assert.equal(main(["scopes", "--effective", "--json", "src/api/v2/x.ts"], root), 0);
+  } finally {
+    console.log = log;
+  }
+  const result = JSON.parse(out.join("\n")) as { effective: { file: string; bytes: number }[]; bytes: number };
+  out.length = 0;
+  console.log = (line: string) => out.push(line);
+  try {
+    assert.equal(main(["scopes", "--effective", "src/api"], root), 0);
+  } finally {
+    console.log = log;
+  }
+  const text = out.join("\n");
+  assert.match(text, /Effective instructions: \d+ file\(s\), \d+ bytes/);
+  assert.match(text, /^\s+6  src\/api\/AGENTS\.md$/m);
+  const files = result.effective.map((e) => e.file);
+  assert.deepEqual(files.slice(0, 2), ["AGENTS.md", "src/api/AGENTS.md"]);
+  assert.ok(files.includes(".agents/rules/apis.md"));
+  assert.equal(result.effective[1]!.bytes, 6);
+  assert.equal(result.bytes, result.effective.reduce((sum, e) => sum + e.bytes, 0));
+});
+
+test("verify warns about CLAUDE.md citations and dated history in project instructions", () => {
+  const root = synced();
+  const agentsPath = join(root, "AGENTS.md");
+  writeFileSync(
+    agentsPath,
+    `${readFileSync(agentsPath, "utf8")}
+- Git flow: see \`CLAUDE.md\` §Git, or [the guide](CLAUDE.md#git).
+- The handler was renamed on 2026-08-18.
+- 2026-11 起改为先部署再合并。
+- Releases ship on 2026-12-01.
+
+\`\`\`text
+renamed 2026-01-01 inside a fence is fine
+\`\`\`
+`,
+  );
+  const warnings = verify(root).warnings.filter((w) => w.startsWith("AGENTS.md:"));
+  const lines = (pattern: RegExp) =>
+    warnings.filter((w) => pattern.test(w)).map((w) => Number(/^AGENTS\.md:(\d+)/.exec(w)![1]));
+  const text = readFileSync(agentsPath, "utf8").split("\n");
+  const lineOf = (needle: string) => text.findIndex((l) => l.includes(needle)) + 1;
+  assert.deepEqual(lines(/cites CLAUDE\.md/), [lineOf("Git flow")], "one warning per line, with the real line number");
+  assert.deepEqual(lines(/dated history/), [lineOf("renamed on"), lineOf("起改为")]);
+  assert.ok(!warnings.some((w) => w.includes("canons:begin")));
 });

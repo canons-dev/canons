@@ -18,20 +18,26 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
+/** Parsed JSON of `path`, or undefined when it is missing or not valid JSON. */
+export function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+/** This package's own package.json. */
+export function manifest(root = PACKAGE_ROOT): { name: string; version: string; repository?: { url?: string } } {
+  return readJson(resolve(root, "package.json")) as { name: string; version: string };
+}
+
 export function packageVersion(root = PACKAGE_ROOT): string {
-  return (
-    JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
-      version: string;
-    }
-  ).version;
+  return manifest(root).version;
 }
 
 export function packageName(root = PACKAGE_ROOT): string {
-  return (
-    JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
-      name: string;
-    }
-  ).name;
+  return manifest(root).name;
 }
 
 /** The command the managed rules tell agents to run, per runner. */
@@ -182,10 +188,15 @@ export interface Lock {
 }
 
 export function parseLock(text: string): Lock {
-  const lock = JSON.parse(text) as Lock;
-  if (lock.lockfileVersion !== 1 || typeof lock.files !== "object")
-    throw new Error("canons.lock.json has an unsupported format");
-  return lock;
+  let lock: Partial<Lock> | null | undefined;
+  try {
+    lock = JSON.parse(text) as Partial<Lock> | null;
+  } catch {
+    lock = undefined;
+  }
+  if (!lock || typeof lock !== "object" || lock.lockfileVersion !== 1 || !lock.files || typeof lock.files !== "object")
+    throw new Error("canons.lock.json is not a valid canons lock file; restore it from git");
+  return lock as Lock;
 }
 
 export function renderLock(lock: Lock): string {

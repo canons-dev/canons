@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // canons CLI entry. Exit code 0 = ok, 1 = errors (or warnings with --strict).
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verify } from "./verify.ts";
 import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
-import { isBreakingUpgrade, packageName, packageVersion, runnerCommand } from "./content.ts";
+import { isBreakingUpgrade, packageName, packageVersion, readJson, runnerCommand } from "./content.ts";
 import { doctor } from "./doctor.ts";
 import {
   changedScopePaths,
+  effectiveInstructions,
   expandScopePaths,
   loadScopeRules,
   matchScopeRules,
@@ -37,8 +38,10 @@ Usage:
                                      --adopt moves an existing CLAUDE.md, .claude/rules or
                                      .claude/skills into AGENTS.md / .agents/ and links it
   canons verify [--strict]           deterministic hygiene checks (for CI and pre-commit)
-  canons scopes [--changed] [--json] <file-or-dir>...
-                                     list the rules that apply to the given paths
+  canons scopes [--changed] [--effective] [--json] <file-or-dir>...
+                                     list the rules that apply to the given paths;
+                                     --effective also lists every AGENTS.md and rule
+                                     loaded for them, with byte counts
   canons latest [--json] [--decline <version>]
                                      compare with the newest published version (network);
                                      --decline stops the notice for that version
@@ -54,9 +57,8 @@ function noticeFor(root: string): string | undefined {
   try {
     const config = loadConfig(root);
     if (!config.updateCheck) return undefined;
-    const manifest = resolve(root, "package.json");
     // Not inside canons' own repository.
-    if (existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { name?: string }).name === packageName())
+    if ((readJson(resolve(root, "package.json")) as { name?: string } | undefined)?.name === packageName())
       return undefined;
     return updateNotice({
       installed: readLock(root)?.canons ?? packageVersion(),
@@ -142,7 +144,7 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
       return failed ? 1 : 0;
     }
     case "scopes": {
-      assertFlags(args, ["--changed", "--json"]);
+      assertFlags(args, ["--changed", "--effective", "--json"]);
       const changed = args.includes("--changed");
       const inputs = args.filter((a) => !a.startsWith("--"));
       if (!inputs.length && !changed)
@@ -157,8 +159,12 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
       const rules = matchScopeRules(loadScopeRules(root, config.rulesDir), paths);
       const notice = noticeFor(root);
       if (notice) console.error(notice);
+      const effective = args.includes("--effective")
+        ? effectiveInstructions(root, paths, rules)
+        : undefined;
+      const total = effective?.reduce((sum, e) => sum + e.bytes, 0);
       if (args.includes("--json")) {
-        console.log(JSON.stringify({ paths, rules }, null, 2));
+        console.log(JSON.stringify(effective ? { paths, rules, effective, bytes: total } : { paths, rules }, null, 2));
         return 0;
       }
       console.log(
@@ -169,6 +175,10 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
         if (!rule.matches.length) console.log("  global rule (no paths)");
         for (const { path, glob } of rule.matches)
           console.log(`  ${path} <- ${glob}`);
+      }
+      if (effective) {
+        console.log(`\nEffective instructions: ${effective.length} file(s), ${total} bytes`);
+        for (const { file, bytes } of effective) console.log(`  ${String(bytes).padStart(7)}  ${file}`);
       }
       return 0;
     }

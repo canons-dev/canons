@@ -93,32 +93,13 @@ export function parseConfig(raw: unknown): CanonsConfig {
     fail(`clients must be a list drawn from: ${CLIENTS.join(", ")}`);
   if (!(RUNNERS as readonly string[]).includes(config.runner))
     fail(`runner must be one of: ${RUNNERS.join(", ")}`);
-  for (const key of ["rulesDir", "skillsDir"] as const) {
-    const value = config[key];
-    if (
-      typeof value !== "string" ||
-      !value ||
-      value.startsWith("/") ||
-      value.split("/").includes("..")
-    )
-      fail(`${key} must be a repo-relative path`);
-  }
-  if (
-    !Array.isArray(config.sourceDirs) ||
-    !config.sourceDirs.length ||
-    config.sourceDirs.some(
-      (dir) =>
-        typeof dir !== "string" || !dir || dir.startsWith("/") || dir.split("/").includes(".."),
-    )
-  )
+  const isRepoPath = (v: unknown) =>
+    typeof v === "string" && !!v && !v.startsWith("/") && !v.split("/").includes("..");
+  for (const key of ["rulesDir", "skillsDir"] as const)
+    if (!isRepoPath(config[key])) fail(`${key} must be a repo-relative path`);
+  if (!Array.isArray(config.sourceDirs) || !config.sourceDirs.length || !config.sourceDirs.every(isRepoPath))
     fail("sourceDirs must be a non-empty list of repo-relative directories");
-  if (
-    !Array.isArray(config.docDirs) ||
-    config.docDirs.some(
-      (dir) =>
-        typeof dir !== "string" || !dir || dir.startsWith("/") || dir.split("/").includes(".."),
-    )
-  )
+  if (!Array.isArray(config.docDirs) || !config.docDirs.every(isRepoPath))
     fail("docDirs must be a list of repo-relative directories");
   if (!Number.isInteger(config.budgetBytes) || config.budgetBytes <= 0)
     fail("budgetBytes must be a positive integer");
