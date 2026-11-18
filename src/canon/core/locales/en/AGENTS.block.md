@@ -12,7 +12,7 @@ For every coding agent in this repository. Each item names an outcome and why; a
 ### Knowledge and documents
 
 - **C5** Conventions agents must remember live in repository files reviewed through git, not in a client's private memory. Cross-module pitfalls go in one lessons file (symptom, cause, avoidance, invariant), merged by topic.
-- **C6** Docs and rules hold current knowledge and its reasons, not history. Point to what the code shows instead of copying it, guard invariants with tests, and write each constraint once, with one term per concept. Leave out what an agent can infer (generic advice, restated linter rules). A rule that allows no exception becomes a deterministic check (test, CI, hook) rather than louder wording; when a rule keeps being ignored, shorten the file or add a check instead of emphasis.
+- **C6** Docs and rules hold current knowledge and its reasons, not history. Point to what the code shows instead of copying it, guard invariants with tests, write each constraint once and use one term per concept; leave out what an agent can infer. A rule that allows no exception becomes a deterministic check (test, CI, hook), not louder wording.
 - **C7** Temporary files, one-off scripts and in-flight plans go in the temporary directory (`tmp/` unless C17 says otherwise, git-ignored); reusable tools are committed. Nothing durable points into it.
 
 ### Collaboration and authority
@@ -27,7 +27,7 @@ For every coding agent in this repository. Each item names an outcome and why; a
 
 ### Finishing a change
 
-- **C15** A change is done when it is shown to work: before starting, decide the checks that will show it (for example a failing test that reproduces the bug; one per step of a longer task), and run them before finishing. `AGENTS.md` records, outside this block, the exact build, test and lint commands and how to run a single test, so every agent verifies the same way. When a change lands, code, tests, docs and rules agree: testable logic has tests, and affected docs and rules are updated in the same change. Report what was updated and why anything was not.
+- **C15** A change is done when it is shown to work: decide up front the checks that will show it (for example a failing test that reproduces the bug; one per step of a longer task) and run them before finishing; `AGENTS.md` records, outside this block, the exact build, test, lint and single-test commands so every agent verifies alike. When a change lands, code, tests, docs and rules agree: testable logic has tests, and affected docs and rules change in the same change. Report what was updated and why anything was not.
 
 ### Language and layout
 
@@ -40,4 +40,9 @@ For every coding agent in this repository. Each item names an outcome and why; a
 - **C19** After changing shared semantics (an API parameter, hook or constant), every caller still works, so review all call sites first. Record any coupling that must change in step as a sync point in the docs.
 - **C20** Other repositories (siblings, reference implementations, nearby dependency sources) are read-only unless the user allows changes. In a worktree, confirm where a sibling actually is instead of assuming `../`.
 - **C21** What the project deliberately defers or declines is listed in its docs and is the project's call; do not add it on the side. When something looks missing, check that list first.
-- **C22** Do what was asked, at the scope asked; read an instruction no wider than it is. Every changed line traces to the request: no drive-by reformatting or refactoring, match the surrounding style, remove what your own change left unused, and only mention dead code that was already there. State the assumptions you build on, and say when a simpler approach would do; no abstraction for single-use code, no configuration nobody asked for, no handling for errors that cannot happen. A one-off request is not a standing rule to record, and a decision needs no guard against its own reversal. Extra features, rules, docs or safeguards wait until the user asks; at most mention them in one line. What the change itself requires (C15, C19) is not extra.
+- **C22** Do what was asked, at the scope asked; read an instruction no wider than it is. Every changed line traces to the request: no drive-by reformatting or refactoring, match the surrounding style, clean up only what your own change left unused. State your assumptions and any simpler approach; no single-use abstraction, unrequested configuration or handling for impossible errors. A one-off request is not a standing rule, and a decision needs no guard against its reversal. Extra features, rules, docs or safeguards wait until the user asks, mentioned in one line at most; what the change itself requires (C15, C19) is not extra.
+
+### Sessions and replies
+
+- **C23** Keep the main conversation focused: long or complex work that would crowd or steer its context (wide searches, long investigations, independent pieces) goes to a sub-agent or separate session when the client offers one, with a brief it can act on (C13); take back the result, not the process. Finish what you start: once the result is in, close or archive it and say so in the settlement (C14).
+- **C24** Replies lead with results, key conclusions and the decisions the user must make. Leave out repeated explanations, needless disclaimers, generic reminders and unrelated alternatives; a supplement worth keeping goes in a file where the project keeps such notes (for example the temporary directory, C7), pointed to in one line. Unverified marks (C11) and the settlement (C14) are not redundancy.
