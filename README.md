@@ -57,7 +57,7 @@ anchors:              # optional: code symbols this rule pins
 - Validate every request body at the boundary with `parseRequest`.
 ```
 
-`verify` fails when an anchor no longer appears in `sourceDirs`, so a rename cannot silently leave a rule pointing at nothing.
+`verify` fails when an anchor no longer appears in `source`, so a rename cannot silently leave a rule pointing at nothing.
 
 ```sh
 npx canons scopes src/api/users.ts   # which rules apply here?
@@ -77,37 +77,35 @@ npx canons scopes --changed          # which rules apply to my diff?
 
 ## Configuration
 
-`canons.json` (all keys except `version` are optional):
+`canons.json` (every key has six lowercase letters; all except `format` are optional):
 
 ```json
 {
-  "version": 1,
+  "format": 1,
   "locale": "en",
-  "clients": ["codex", "claude"],
+  "agents": ["codex", "claude"],
   "runner": "local",
-  "rulesDir": ".agents/rules",
-  "skillsDir": ".agents/skills",
-  "sourceDirs": ["src"],
-  "docDirs": ["doc"],
-  "budgetBytes": 24576,
-  "ruleNamePattern": "^[a-z-]+$",
-  "updateCheck": true
+  "source": ["src"],
+  "docset": ["doc"],
+  "budget": 24576,
+  "naming": "^[a-z-]+$",
+  "notify": true
 }
 ```
 
 - `runner` sets the command the managed rules tell agents to run. `local` (the default when `package.json` exists) writes `npx canons` and needs the package as a dev dependency; `verify` warns when it is missing. `npx` (the default without `package.json`) writes `npx -y @canons-dev/canons@<version>`, pinned to the version that last ran `update`.
-- `sourceDirs` lists where rule `anchors` must still appear (default `["src"]`; Markdown files are not searched).
-- `docDirs` adds directories whose Markdown links `verify` checks. `AGENTS.md` files and rules are always checked (errors), skills too (warnings, since they may be vendored upstream text). Links inside code are ignored.
-- `budgetBytes` limits the root `AGENTS.md` alone (default 24 KiB, at most 32 KiB) so nested instruction files still fit in what Codex loads.
-- `ruleNamePattern` optionally constrains the names of your own top-level rule files.
-- `updateCheck: false` turns the update notice off for the repository (see Updates).
-- `presets` and `hooks` are reserved for later versions and must stay empty / `false`.
+- `format` is the version of the `canons.json` format itself. `agents` lists the coding agents that get adapters (`codex`, `claude`). Rules and skills always live in `.agents/rules/` and `.agents/skills/` (C1).
+- `source` lists where rule `anchors` must still appear (default `["src"]`; Markdown files are not searched).
+- `docset` adds directories whose Markdown links `verify` checks. `AGENTS.md` files and rules are always checked (errors), skills too (warnings, since they may be vendored upstream text). Links inside code are ignored.
+- `budget` limits the root `AGENTS.md` alone (default 24 KiB, at most 32 KiB) so nested instruction files still fit in what Codex loads.
+- `naming` optionally constrains the names of your own top-level rule files.
+- `notify: false` turns the update notice off for the repository (see Updates).
 
 ## Updates
 
 `canons scopes` and `canons doctor` mention a newer canons version in one line on stderr, at most once a day per version. Agents run `scopes` on every task, so the notice reaches every repository in use; C3 tells them to finish the current task, ask you, and on your consent follow the managed `canons` skill (`.agents/skills/canons/SKILL.md`), which upgrades in a separate change and never commits without your say.
 
-The notice never slows a command down or breaks it: the command only reads a small cache in `~/.cache/canons` (`$XDG_CACHE_HOME`, or `CANONS_CACHE_DIR`). When the cache is a day old, a detached background process asks the npm registry for the `latest` version (honoring `npm_config_registry`) and exits; if it fails (offline, a sandbox, a proxy), nothing is shown and it tries again the next day. Stdout and exit codes never change, and `verify` never touches the network. It is off when `CI` is set, with `CANONS_NO_UPDATE_CHECK=1`, or with `"updateCheck": false`.
+The notice never slows a command down or breaks it: the command only reads a small cache in `~/.cache/canons` (`$XDG_CACHE_HOME`, or `CANONS_CACHE_DIR`). When the cache is a day old, a detached background process asks the npm registry for the `latest` version (honoring `npm_config_registry`) and exits; if it fails (offline, a sandbox, a proxy), nothing is shown and it tries again the next day. Stdout and exit codes never change, and `verify` never touches the network. It is off when `CI` is set, with `CANONS_NO_UPDATE_CHECK=1`, or with `"notify": false`.
 
 ## Clients
 

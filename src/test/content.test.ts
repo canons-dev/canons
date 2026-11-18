@@ -46,13 +46,15 @@ test("isBreakingUpgrade", () => {
 });
 
 test("parseConfig rejects unknown keys and unshipped features", () => {
-  assert.equal(parseConfig({ version: 1 }).locale, "en");
-  assert.throws(() => parseConfig({ version: 1, locales: "x" }), /unknown key/);
-  assert.throws(() => parseConfig({ version: 1, presets: ["x"] }), /presets/);
-  assert.throws(() => parseConfig({ version: 1, hooks: true }), /hooks/);
-  assert.throws(() => parseConfig({ version: 1, clients: ["vim"] }), /clients/);
-  assert.throws(() => parseConfig({ version: 1, budgetBytes: 40000 }), /32768/);
-  assert.throws(() => parseConfig({ version: 1, rulesDir: "../x" }), /rulesDir/);
+  assert.equal(parseConfig({ format: 1 }).locale, "en");
+  assert.throws(() => parseConfig({ format: 1, locales: "x" }), /unknown key/);
+  for (const removed of ["version", "clients", "rulesDir", "skillsDir", "presets", "hooks"])
+    assert.throws(() => parseConfig({ format: 1, [removed]: 1 }), /unknown key/);
+  assert.throws(() => parseConfig({ format: 1, agents: ["vim"] }), /agents/);
+  assert.throws(() => parseConfig({ format: 1, budget: 40000 }), /32768/);
+  assert.throws(() => parseConfig({ format: 1, source: ["../x"] }), /source/);
+  for (const key of Object.keys(parseConfig({ format: 1 })))
+    assert.match(key, /^[a-z]{6}$/, "config keys have six lowercase letters");
 });
 
 test("unknown locale lists the available ones", () => {

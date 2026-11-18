@@ -19,6 +19,8 @@ import {
   DEFAULT_CONFIG,
   LOCK_FILE,
   ROOT_FILE,
+  RULES_DIR,
+  SKILLS_DIR,
   loadConfig,
   parseConfig,
   type CanonsConfig,
@@ -110,38 +112,38 @@ export function claudeState(root: string): ClaudeState {
 /** Client adapter links: link path -> relative target, both repo-relative. */
 export function clientLinks(config: CanonsConfig): Map<string, string> {
   const links = new Map<string, string>();
-  if (config.clients.includes("claude")) {
-    links.set(".claude/rules", posix.relative(".claude", config.rulesDir));
-    links.set(".claude/skills", posix.relative(".claude", config.skillsDir));
+  if (config.agents.includes("claude")) {
+    links.set(".claude/rules", posix.relative(".claude", RULES_DIR));
+    links.set(".claude/skills", posix.relative(".claude", SKILLS_DIR));
   }
   return links;
 }
 
-export function managedRulePath(config: CanonsConfig, file: string): string {
-  return `${config.rulesDir}/${MANAGED_SUBDIR}/${file}`;
+export function managedRulePath(file: string): string {
+  return `${RULES_DIR}/${MANAGED_SUBDIR}/${file}`;
 }
 
-export function managedSkillPath(config: CanonsConfig, file: string): string {
-  return `${config.skillsDir}/${MANAGED_SUBDIR}/${file}`;
+export function managedSkillPath(file: string): string {
+  return `${SKILLS_DIR}/${MANAGED_SUBDIR}/${file}`;
 }
 
 /** Every managed rule and skill file of `canon`: repo-relative path -> content. */
-export function managedFiles(config: CanonsConfig, canon: Canon): Map<string, string> {
+export function managedFiles(canon: Canon): Map<string, string> {
   const files = new Map<string, string>();
-  for (const [file, text] of canon.rules) files.set(managedRulePath(config, file), text);
-  for (const [file, text] of canon.skills) files.set(managedSkillPath(config, file), text);
+  for (const [file, text] of canon.rules) files.set(managedRulePath(file), text);
+  for (const [file, text] of canon.skills) files.set(managedSkillPath(file), text);
   return files;
 }
 
 /** Markdown files already present in the managed rule and skill directories. */
-export function presentManagedFiles(root: string, config: CanonsConfig): string[] {
+export function presentManagedFiles(root: string): string[] {
   const present: string[] = [];
   for (const [dir, toPath] of [
-    [config.rulesDir, managedRulePath],
-    [config.skillsDir, managedSkillPath],
+    [RULES_DIR, managedRulePath],
+    [SKILLS_DIR, managedSkillPath],
   ] as const) {
     const abs = resolve(root, dir, MANAGED_SUBDIR);
-    if (existsSync(abs)) for (const file of listMarkdown(abs)) present.push(toPath(config, file));
+    if (existsSync(abs)) for (const file of listMarkdown(abs)) present.push(toPath(file));
   }
   return present;
 }
@@ -173,14 +175,14 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     if (stat?.isSymbolicLink() && readlinkSync(resolve(root, link)) === target) continue;
     if (stat && !options.adopt)
       throw new Error(
-        `${link} exists but is not a symlink to ${target}. Rerun with --adopt to move its content into place, or merge it into ${ROOT_FILE} (outside the canons block) or ${config.rulesDir} by hand and remove it.`,
+        `${link} exists but is not a symlink to ${target}. Rerun with --adopt to move its content into place, or merge it into ${ROOT_FILE} (outside the canons block) or ${RULES_DIR} by hand and remove it.`,
       );
     if (stat) adoptions.push(planAdoption(root, link, target));
     links.push([link, target]);
   }
   // CLAUDE.md imports AGENTS.md. A symlink to AGENTS.md is the old adapter and is
   // replaced; any other content is moved with --adopt or refused.
-  const claude = config.clients.includes("claude") ? claudeState(root) : "import";
+  const claude = config.agents.includes("claude") ? claudeState(root) : "import";
   if (claude === "symlink" || claude === "other")
     throw new Error(
       `${CLAUDE_FILE} is ${claude === "symlink" ? `a symlink to ${readlinkSync(resolve(root, CLAUDE_FILE))}` : "not a regular file"}. Remove it and rerun; canons writes a ${CLAUDE_FILE} that imports ${ROOT_FILE}.`,
@@ -206,18 +208,18 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
   const current = rootText ? extractBlock(rootText) : undefined;
   if (current && sha256(current.body) !== current.attrs.sha256)
     edited.push(`${ROOT_FILE} (managed block)`);
-  for (const [path, hash] of Object.entries(lock?.files ?? {})) {
+  for (const [path, hash] of Object.entries(lock?.hashes ?? {})) {
     const abs = resolve(root, path);
     if (existsSync(abs) && sha256(readFileSync(abs, "utf8")) !== hash)
       edited.push(path);
   }
-  const shipped = managedFiles(config, canon);
-  const known = new Set([...Object.keys(lock?.files ?? {}), ...shipped.keys()]);
-  for (const path of presentManagedFiles(root, config))
+  const shipped = managedFiles(canon);
+  const known = new Set([...Object.keys(lock?.hashes ?? {}), ...shipped.keys()]);
+  for (const path of presentManagedFiles(root))
     if (!known.has(path)) edited.push(`${path} (not managed by canons)`);
   if (edited.length && !options.force)
     throw new Error(
-      `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${config.rulesDir}/${MANAGED_SUBDIR}/ / ${config.skillsDir}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
+      `local edits to managed content:\n  ${edited.join("\n  ")}\nMove project-specific text outside the canons block / ${RULES_DIR}/${MANAGED_SUBDIR}/ / ${SKILLS_DIR}/${MANAGED_SUBDIR}/, or rerun with --force to discard the edits.`,
     );
 
   // Directories and a write probe in each, undone if any of them fails.
@@ -225,8 +227,8 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     ".",
     ...new Set([
       ...[...shipped.keys()].map((path) => posix.dirname(path)),
-      config.rulesDir,
-      config.skillsDir,
+      RULES_DIR,
+      SKILLS_DIR,
       ...links.map(([link]) => posix.dirname(link)),
     ]),
   ];
@@ -282,22 +284,22 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
     }
     files[path] = sha256(text);
   }
-  for (const path of Object.keys(lock?.files ?? {}))
+  for (const path of Object.keys(lock?.hashes ?? {}))
     if (!(path in files) && existsSync(resolve(root, path))) {
       rmSync(resolve(root, path));
       log.push(`removed ${path}`);
     }
-  for (const path of presentManagedFiles(root, config))
+  for (const path of presentManagedFiles(root))
     if (!(path in files)) {
       rmSync(resolve(root, path));
       log.push(`removed ${path}`);
     }
   // Git does not track empty directories; without a placeholder a fresh clone
   // would get a dangling .claude/skills link.
-  const skillsAbs = resolve(root, config.skillsDir);
+  const skillsAbs = resolve(root, SKILLS_DIR);
   if (!readdirSync(skillsAbs).length) {
     writeFileSync(resolve(skillsAbs, ".gitkeep"), "");
-    log.push(`created ${config.skillsDir}/.gitkeep`);
+    log.push(`created ${SKILLS_DIR}/.gitkeep`);
   }
 
   for (const [link, target] of links) {
@@ -311,11 +313,11 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
   }
 
   const nextLock: Lock = {
-    lockfileVersion: 1,
+    format: 1,
     canons: canon.version,
     locale: canon.locale,
-    block: sha256(canon.block),
-    files,
+    digest: sha256(canon.block),
+    hashes: files,
   };
   const lockText = renderLock(nextLock);
   const lockPath = resolve(root, LOCK_FILE);
@@ -340,7 +342,7 @@ export function create(root: string, options: CreateOptions = {}): string[] {
   const locale = options.locale ?? DEFAULT_CONFIG.locale;
   const runner =
     options.runner ?? (existsSync(resolve(root, "package.json")) ? "local" : "npx");
-  const declared = { version: 1, locale, clients: DEFAULT_CONFIG.clients, runner };
+  const declared = { format: 1, locale, agents: DEFAULT_CONFIG.agents, runner };
   const log = apply(root, parseConfig(declared), options);
   writeFileSync(configPath, `${JSON.stringify(declared, null, 2)}\n`);
   return [...log, `created ${CONFIG_FILE} (runner: ${runner})`];

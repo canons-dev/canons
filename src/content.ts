@@ -11,7 +11,7 @@ import { listMarkdown } from "./rules.ts";
 // (the build copies src/canon to out/canon).
 export const CONTENT_ROOT = dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = resolve(CONTENT_ROOT, "..");
-/** Managed rules and skills live in this subdirectory of the consumer's rulesDir and skillsDir. */
+/** Managed rules and skills live in this subdirectory of the consumer's rules and skills directories. */
 export const MANAGED_SUBDIR = "canons";
 
 export function sha256(text: string): string {
@@ -61,9 +61,9 @@ export interface Canon {
   locale: string;
   /** Body of the managed block, without markers. */
   block: string;
-  /** Rule files keyed by their path below `<rulesDir>/canons/`. */
+  /** Rule files keyed by their path below `.agents/rules/canons/`. */
   rules: Map<string, string>;
-  /** Skill files keyed by their path below `<skillsDir>/canons/`. */
+  /** Skill files keyed by their path below `.agents/skills/canons/`. */
   skills: Map<string, string>;
   /** Project settings and rules skeleton for a newly created AGENTS.md. */
   project: string;
@@ -179,12 +179,13 @@ export function upsertBlock(text: string, block: string): string {
 // ---- lock ----------------------------------------------------------------
 
 export interface Lock {
-  lockfileVersion: 1;
+  format: 1;
   canons: string;
   locale: string;
-  block: string;
+  /** sha256 of the managed block body. */
+  digest: string;
   /** Repo-relative path of each managed file -> sha256 of its content. */
-  files: Record<string, string>;
+  hashes: Record<string, string>;
 }
 
 export function parseLock(text: string): Lock {
@@ -194,16 +195,16 @@ export function parseLock(text: string): Lock {
   } catch {
     lock = undefined;
   }
-  if (!lock || typeof lock !== "object" || lock.lockfileVersion !== 1 || !lock.files || typeof lock.files !== "object")
+  if (!lock || typeof lock !== "object" || lock.format !== 1 || !lock.hashes || typeof lock.hashes !== "object")
     throw new Error("canons.lock.json is not a valid canons lock file; restore it from git");
   return lock as Lock;
 }
 
 export function renderLock(lock: Lock): string {
-  const files = Object.fromEntries(
-    Object.entries(lock.files).sort(([a], [b]) => a.localeCompare(b)),
+  const hashes = Object.fromEntries(
+    Object.entries(lock.hashes).sort(([a], [b]) => a.localeCompare(b)),
   );
-  return `${JSON.stringify({ ...lock, files }, null, 2)}\n`;
+  return `${JSON.stringify({ ...lock, hashes }, null, 2)}\n`;
 }
 
 /** True when going from `from` to `to` crosses a breaking boundary (major, or minor while 0.x). */

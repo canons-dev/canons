@@ -13,6 +13,8 @@ import { dirname, posix, resolve } from "node:path";
 import {
   CODEX_CHAIN_MAX_BYTES,
   ROOT_FILE,
+  RULES_DIR,
+  SKILLS_DIR,
   loadConfig,
   type CanonsConfig,
 } from "./config.ts";
@@ -199,7 +201,7 @@ export function staleReferences(root: string, file: string, text: string): strin
 
 /**
  * Each anchor must appear as a whole word in a non-ignored, non-Markdown file under
- * `sourceDirs`. Comments count; the point is to catch renames and deletions.
+ * `source` directories. Comments count; the point is to catch renames and deletions.
  */
 function anchorErrors(
   root: string,
@@ -209,14 +211,14 @@ function anchorErrors(
 ): string[] {
   const pinned = rules.filter((rule) => rule.anchors.length);
   if (!pinned.length) return [];
-  const prefixes = config.sourceDirs.map((dir) => `${dir.replace(/\/+$/, "")}/`);
+  const prefixes = config.source.map((dir) => `${dir.replace(/\/+$/, "")}/`);
   const sources = files.filter(
     (f) => prefixes.some((p) => f.startsWith(p)) && !f.endsWith(".md"),
   );
-  const where = config.sourceDirs.join(", ");
+  const where = config.source.join(", ");
   if (!sources.length)
     return pinned.map(
-      (rule) => `${rule.file}: declares anchors, but sourceDirs (${where}) holds no files`,
+      (rule) => `${rule.file}: declares anchors, but source (${where}) holds no files`,
     );
   const text = sources
     .map((f) => {
@@ -268,9 +270,9 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
   else {
     const text = readFileSync(rootPath, "utf8");
     const bytes = Buffer.byteLength(text, "utf8");
-    if (bytes > config.budgetBytes)
+    if (bytes > config.budget)
       errors.push(
-        `${ROOT_FILE} is ${bytes} bytes, over the ${config.budgetBytes}-byte budget; trim it or move rationale into docs (never drop red lines)`,
+        `${ROOT_FILE} is ${bytes} bytes, over the ${config.budget}-byte budget; trim it or move rationale into docs (never drop red lines)`,
       );
     try {
       const block = extractBlock(text);
@@ -280,7 +282,7 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
           errors.push(
             `${ROOT_FILE}: the canons block was edited by hand; move the change outside the block, or propose it upstream`,
           );
-        if (lock && block.attrs.sha256 !== lock.block)
+        if (lock && block.attrs.sha256 !== lock.digest)
           errors.push(`${ROOT_FILE}: the canons block does not match canons.lock.json; run "canons update"`);
       }
     } catch (error) {
@@ -296,12 +298,12 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
         errors.push(
           `canons.lock.json is for canons ${lock.canons} (${lock.locale}) but ${canon.version} (${config.locale}) is installed; run "canons update"`,
         );
-      else if (canonBlockHash !== lock.block)
+      else if (canonBlockHash !== lock.digest)
         errors.push(`canons.lock.json does not match the installed canons; run "canons update"`);
     } catch (error) {
       errors.push((error as Error).message);
     }
-    for (const [path, hash] of Object.entries(lock.files)) {
+    for (const [path, hash] of Object.entries(lock.hashes)) {
       const abs = resolve(root, path);
       if (!existsSync(abs)) errors.push(`${path} is missing; run "canons update"`);
       else if (sha256(readFileSync(abs, "utf8")) !== hash)
@@ -309,8 +311,8 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
           `${path} was edited by hand; put project rules and skills outside the ${MANAGED_SUBDIR}/ directories`,
         );
     }
-    for (const path of presentManagedFiles(root, config))
-      if (!(path in lock.files))
+    for (const path of presentManagedFiles(root))
+      if (!(path in lock.hashes))
         errors.push(`${path} is not managed by canons; move it out of the ${MANAGED_SUBDIR}/ directory`);
   }
 
@@ -355,7 +357,7 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
       errors.push(`${link} points to ${readlinkSync(abs)}; expected ${target}`);
     else if (!existsSync(abs)) errors.push(`${link} is a dangling symlink`);
   }
-  if (config.clients.includes("claude")) {
+  if (config.agents.includes("claude")) {
     const state = claudeState(root);
     const want = JSON.stringify(CLAUDE_IMPORT.trim());
     if (state === "missing") errors.push(`${CLAUDE_FILE} is missing; run "canons update"`);
@@ -368,14 +370,14 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
   }
 
   // 4. Rule files: parseable frontmatter, valid globs, naming, links, length.
-  const managedRules = managedRulePath(config, "");
-  const managedSkills = managedSkillPath(config, "");
-  const rulesAbs = resolve(root, config.rulesDir);
+  const managedRules = managedRulePath("");
+  const managedSkills = managedSkillPath("");
+  const rulesAbs = resolve(root, RULES_DIR);
   const ruleFiles = existsSync(rulesAbs) ? listMarkdown(rulesAbs) : [];
-  if (!existsSync(rulesAbs)) errors.push(`${config.rulesDir} is missing`);
+  if (!existsSync(rulesAbs)) errors.push(`${RULES_DIR} is missing`);
   else {
     try {
-      const rules = loadScopeRules(root, config.rulesDir);
+      const rules = loadScopeRules(root, RULES_DIR);
       errors.push(...anchorErrors(root, config, files, rules));
       // Managed rules are generic and may name files a project does not have.
       for (const rule of rules.filter((r) => !r.file.startsWith(managedRules)))
@@ -389,42 +391,42 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     } catch (error) {
       errors.push((error as Error).message);
     }
-    if (config.ruleNamePattern) {
-      const re = new RegExp(config.ruleNamePattern);
+    if (config.naming) {
+      const re = new RegExp(config.naming);
       for (const file of ruleFiles)
         if (!file.includes("/") && !re.test(file.replace(/\.md$/, "")))
           errors.push(
-            `${config.rulesDir}/${file}: name does not match ruleNamePattern ${config.ruleNamePattern}`,
+            `${RULES_DIR}/${file}: name does not match naming ${config.naming}`,
           );
     }
     for (const file of ruleFiles) {
       for (const target of brokenLinks(resolve(rulesAbs, file)))
         errors.push(
-          `${config.rulesDir}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
+          `${RULES_DIR}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
         );
       // Long rules dilute what agents follow.
       const lines = lineCount(readFileSync(resolve(rulesAbs, file), "utf8"));
       if (lines > MAX_LINES)
-        warnings.push(`${config.rulesDir}/${file}: ${lines} lines, over ${MAX_LINES}; split it or move detail into docs`);
+        warnings.push(`${RULES_DIR}/${file}: ${lines} lines, over ${MAX_LINES}; split it or move detail into docs`);
     }
   }
 
-  // 5. Links in the other instruction files and in docDirs resolve from the file's own directory.
+  // 5. Links in the other instruction files and in docset resolve from the file's own directory.
   const under = (dir: string) => {
     const prefix = `${dir.replace(/\/+$/, "")}/`;
     return files.filter((f) => f.startsWith(prefix) && f.endsWith(".md"));
   };
   const instructionFiles = [...new Set([...(existsSync(rootPath) ? [ROOT_FILE] : []), ...agentsFiles])];
-  for (const file of [...instructionFiles, ...config.docDirs.flatMap(under)])
+  for (const file of [...instructionFiles, ...config.docset.flatMap(under)])
     for (const target of brokenLinks(resolve(root, file)))
       errors.push(`${file}: broken link ${target}`);
   // Skills may be vendored upstream text (never edited locally), so only warn.
-  for (const file of under(config.skillsDir))
+  for (const file of under(SKILLS_DIR))
     for (const target of brokenLinks(resolve(root, file)))
       warnings.push(`${file}: broken link ${target}`);
 
   // 6. Skills follow the Agent Skills format; long files and nested references are warnings.
-  for (const file of under(config.skillsDir).filter((f) => posix.basename(f) === "SKILL.md")) {
+  for (const file of under(SKILLS_DIR).filter((f) => posix.basename(f) === "SKILL.md")) {
     const abs = resolve(root, file);
     errors.push(...checkSkill(root, file));
     const lines = lineCount(readFileSync(abs, "utf8"));
@@ -457,8 +459,8 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     projectText.push([file, text.replace(/<!-- canons:begin[\s\S]*?<!-- canons:end -->/, (block) => block.replace(/[^\n]/g, ""))]);
   }
   for (const file of [
-    ...ruleFiles.map((f) => `${config.rulesDir}/${f}`).filter((f) => !f.startsWith(managedRules)),
-    ...under(config.skillsDir).filter((f) => !f.startsWith(managedSkills)),
+    ...ruleFiles.map((f) => `${RULES_DIR}/${f}`).filter((f) => !f.startsWith(managedRules)),
+    ...under(SKILLS_DIR).filter((f) => !f.startsWith(managedSkills)),
   ])
     projectText.push([file, readFileSync(resolve(root, file), "utf8")]);
   for (const [file, text] of projectText)

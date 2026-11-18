@@ -59,7 +59,8 @@ test("update writes block, managed rules, links and lock; verify passes", () => 
   readFileSync(join(root, ".agents/rules/canons/layout.md"), "utf8");
   assert.match(readFileSync(join(root, ".agents/skills/canons/SKILL.md"), "utf8"), /^---\nname: canons\n/);
   const lock = JSON.parse(readFileSync(join(root, "canons.lock.json"), "utf8"));
-  assert.deepEqual(Object.keys(lock.files), [
+  for (const key of Object.keys(lock)) assert.match(key, /^[a-z]{6}$/, "lock keys have six lowercase letters");
+  assert.deepEqual(Object.keys(lock.hashes), [
     ".agents/rules/canons/layout.md",
     ".agents/rules/canons/vendor.md",
     ".agents/skills/canons/SKILL.md",
@@ -115,13 +116,13 @@ test("Codex hazards: AGENTS.override.md and the 32 KiB chain", () => {
 test("root budget, broken links, naming and copies instead of links", () => {
   const root = synced();
   const config = join(root, "canons.json");
-  writeFileSync(config, JSON.stringify({ version: 1, budgetBytes: 1000, ruleNamePattern: "^[a-z]{6}$" }));
+  writeFileSync(config, JSON.stringify({ format: 1, budget: 1000, naming: "^[a-z]{6}$" }));
   const errors = errorsOf(root);
   assert.match(errors, /over the 1000-byte budget/);
   assert.match(errors, /apis\.md: name does not match/);
   assert.doesNotMatch(errors, /layout\.md: name/, "managed subdir is exempt");
 
-  writeFileSync(config, JSON.stringify({ version: 1 }));
+  writeFileSync(config, JSON.stringify({ format: 1 }));
   writeFileSync(join(root, ".agents/rules/apis.md"), '---\npaths:\n  - "src/api/**"\n---\n\nSee [docs](docs/api.md).\n');
   assert.match(errorsOf(root), /broken link docs\/api\.md/);
   mkdirSync(join(root, "src/app/(app)/shell"), { recursive: true });
@@ -158,7 +159,7 @@ test("create creates canons.json in the chosen locale; codex-only skips links", 
   assert.throws(() => create(root, { locale: "en" }), /already exists/);
 
   const codexOnly = fixture();
-  writeFileSync(join(codexOnly, "canons.json"), JSON.stringify({ version: 1, clients: ["codex"] }));
+  writeFileSync(join(codexOnly, "canons.json"), JSON.stringify({ format: 1, agents: ["codex"] }));
   update(codexOnly);
   assert.equal(lstatSync(join(codexOnly, "CLAUDE.md"), { throwIfNoEntry: false }), undefined);
   assert.deepEqual(verify(codexOnly).errors, []);
@@ -217,10 +218,10 @@ test("anchors must still appear in the source directories", () => {
   assert.doesNotMatch(errorsOf(root), /anchor "hello"/);
 
   const config = join(root, "canons.json");
-  writeFileSync(config, JSON.stringify({ version: 1, sourceDirs: ["lib"] }));
-  assert.match(errorsOf(root), /declares anchors, but sourceDirs \(lib\) holds no files/);
-  writeFileSync(config, JSON.stringify({ version: 1, sourceDirs: ["../x"] }));
-  assert.match(errorsOf(root), /sourceDirs must be a non-empty list/);
+  writeFileSync(config, JSON.stringify({ format: 1, source: ["lib"] }));
+  assert.match(errorsOf(root), /declares anchors, but source \(lib\) holds no files/);
+  writeFileSync(config, JSON.stringify({ format: 1, source: ["../x"] }));
+  assert.match(errorsOf(root), /source must be a non-empty list/);
 });
 
 test("breaking upgrades need --accept-major", () => {
@@ -314,7 +315,7 @@ test("--adopt refuses to overwrite or merge diverging content", () => {
   assert.equal(lstatSync(join(root, ".claude/rules")).isDirectory(), true, "nothing moved");
 });
 
-test("links are checked in AGENTS.md, skills and docDirs, not inside code", () => {
+test("links are checked in AGENTS.md, skills and docset, not inside code", () => {
   const root = synced();
   const agentsPath = join(root, "AGENTS.md");
   writeFileSync(
@@ -325,9 +326,9 @@ test("links are checked in AGENTS.md, skills and docDirs, not inside code", () =
   assert.doesNotMatch(errorsOf(root), /not\/a\/link|also\/not/);
   mkdirSync(join(root, "doc"));
   writeFileSync(join(root, "doc/guide.md"), "[gone](gone.md)\n");
-  assert.deepEqual(verify(root).errors, [], "docs are not checked unless listed in docDirs");
+  assert.deepEqual(verify(root).errors, [], "docs are not checked unless listed in docset");
 
-  writeFileSync(join(root, "canons.json"), JSON.stringify({ version: 1, docDirs: ["doc"] }));
+  writeFileSync(join(root, "canons.json"), JSON.stringify({ format: 1, docset: ["doc"] }));
   assert.match(errorsOf(root), /doc\/guide\.md: broken link gone\.md/);
 
   mkdirSync(join(root, ".agents/skills/ship"), { recursive: true });

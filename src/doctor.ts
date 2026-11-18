@@ -39,7 +39,7 @@ export function doctor(root: string): string[] {
     );
   let clients: string[] = [];
   try {
-    clients = loadConfig(root).clients;
+    clients = loadConfig(root).agents;
   } catch (error) {
     out.push(`fix   ${(error as Error).message}`);
   }

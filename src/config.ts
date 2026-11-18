@@ -20,58 +20,41 @@ export type Client = (typeof CLIENTS)[number];
 export const RUNNERS = ["local", "npx"] as const;
 export type Runner = (typeof RUNNERS)[number];
 
+/** Where the real rules and skills live; client adapters link here (C1). */
+export const RULES_DIR = ".agents/rules";
+export const SKILLS_DIR = ".agents/skills";
+
 export interface CanonsConfig {
-  version: 1;
+  /** Format of canons.json itself. */
+  format: 1;
   locale: string;
-  clients: Client[];
+  /** Which coding agents get adapters. */
+  agents: Client[];
   runner: Runner;
-  rulesDir: string;
-  skillsDir: string;
   /** Where rule `anchors` must still appear (repo-relative directories). */
-  sourceDirs: string[];
+  source: string[];
   /** Extra directories whose Markdown links `verify` checks (AGENTS.md, rules and skills are always checked). */
-  docDirs: string[];
+  docset: string[];
   /** Byte budget for the root AGENTS.md alone. */
-  budgetBytes: number;
+  budget: number;
   /** Optional naming rule for the project's own top-level rule files (basename without .md). */
-  ruleNamePattern?: string;
+  naming?: string;
   /** Whether `scopes` and `doctor` mention a newer canons version (default true). */
-  updateCheck: boolean;
-  presets: string[];
-  hooks: boolean;
+  notify: boolean;
 }
 
 export const DEFAULT_CONFIG: CanonsConfig = {
-  version: 1,
+  format: 1,
   locale: "en",
-  clients: ["codex", "claude"],
+  agents: ["codex", "claude"],
   runner: "local",
-  rulesDir: ".agents/rules",
-  skillsDir: ".agents/skills",
-  sourceDirs: ["src"],
-  docDirs: [],
-  budgetBytes: 24 * 1024,
-  updateCheck: true,
-  presets: [],
-  hooks: false,
+  source: ["src"],
+  docset: [],
+  budget: 24 * 1024,
+  notify: true,
 };
 
-const KEYS = new Set([
-  "$schema",
-  "version",
-  "locale",
-  "clients",
-  "runner",
-  "rulesDir",
-  "skillsDir",
-  "sourceDirs",
-  "docDirs",
-  "budgetBytes",
-  "ruleNamePattern",
-  "updateCheck",
-  "presets",
-  "hooks",
-]);
+const KEYS = new Set(["$schema", "format", "locale", "agents", "runner", "source", "docset", "budget", "naming", "notify"]);
 
 export function parseConfig(raw: unknown): CanonsConfig {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
@@ -83,47 +66,37 @@ export function parseConfig(raw: unknown): CanonsConfig {
   const fail = (msg: string): never => {
     throw new Error(`${CONFIG_FILE}: ${msg}`);
   };
-  if (config.version !== 1) fail(`unsupported version ${String(config.version)}`);
+  if (config.format !== 1) fail(`unsupported format ${String(config.format)}`);
   if (typeof config.locale !== "string" || !config.locale)
     fail("locale must be a non-empty string");
   if (
-    !Array.isArray(config.clients) ||
-    config.clients.some((c) => !(CLIENTS as readonly string[]).includes(c))
+    !Array.isArray(config.agents) ||
+    config.agents.some((c) => !(CLIENTS as readonly string[]).includes(c))
   )
-    fail(`clients must be a list drawn from: ${CLIENTS.join(", ")}`);
+    fail(`agents must be a list drawn from: ${CLIENTS.join(", ")}`);
   if (!(RUNNERS as readonly string[]).includes(config.runner))
     fail(`runner must be one of: ${RUNNERS.join(", ")}`);
   const isRepoPath = (v: unknown) =>
     typeof v === "string" && !!v && !v.startsWith("/") && !v.split("/").includes("..");
-  for (const key of ["rulesDir", "skillsDir"] as const)
-    if (!isRepoPath(config[key])) fail(`${key} must be a repo-relative path`);
-  if (!Array.isArray(config.sourceDirs) || !config.sourceDirs.length || !config.sourceDirs.every(isRepoPath))
-    fail("sourceDirs must be a non-empty list of repo-relative directories");
-  if (!Array.isArray(config.docDirs) || !config.docDirs.every(isRepoPath))
-    fail("docDirs must be a list of repo-relative directories");
-  if (!Number.isInteger(config.budgetBytes) || config.budgetBytes <= 0)
-    fail("budgetBytes must be a positive integer");
-  if (config.budgetBytes > CODEX_CHAIN_MAX_BYTES)
+  if (!Array.isArray(config.source) || !config.source.length || !config.source.every(isRepoPath))
+    fail("source must be a non-empty list of repo-relative directories");
+  if (!Array.isArray(config.docset) || !config.docset.every(isRepoPath))
+    fail("docset must be a list of repo-relative directories");
+  if (!Number.isInteger(config.budget) || config.budget <= 0)
+    fail("budget must be a positive integer");
+  if (config.budget > CODEX_CHAIN_MAX_BYTES)
     fail(
-      `budgetBytes must not exceed ${CODEX_CHAIN_MAX_BYTES} (Codex stops loading instructions beyond that)`,
+      `budget must not exceed ${CODEX_CHAIN_MAX_BYTES} (Codex stops loading instructions beyond that)`,
     );
-  if (config.ruleNamePattern !== undefined) {
-    if (typeof config.ruleNamePattern !== "string")
-      fail("ruleNamePattern must be a string");
+  if (config.naming !== undefined) {
+    if (typeof config.naming !== "string") fail("naming must be a string");
     try {
-      new RegExp(config.ruleNamePattern);
+      new RegExp(config.naming);
     } catch {
-      fail("ruleNamePattern is not a valid regular expression");
+      fail("naming is not a valid regular expression");
     }
   }
-  if (typeof config.updateCheck !== "boolean") fail("updateCheck must be true or false");
-  if (!Array.isArray(config.presets))
-    fail("presets must be a list");
-  if (config.presets.length)
-    fail("presets are not available in this version; leave the list empty");
-  if (typeof config.hooks !== "boolean") fail("hooks must be true or false");
-  if (config.hooks)
-    fail("hooks are not available in this version; set hooks to false");
+  if (typeof config.notify !== "boolean") fail("notify must be true or false");
   return config;
 }
 

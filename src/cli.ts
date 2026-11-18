@@ -4,7 +4,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verify } from "./verify.ts";
-import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
+import { RULES_DIR, RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
 import { isBreakingUpgrade, packageName, packageVersion, readJson, runnerCommand } from "./content.ts";
 import { doctor } from "./doctor.ts";
 import {
@@ -50,13 +50,13 @@ Usage:
 
 A rule with no match does not mean "no constraints": the root AGENTS.md still applies.
 scopes and doctor mention a newer canons version from a local cache, refreshed daily
-in the background; set CANONS_NO_UPDATE_CHECK=1 or "updateCheck": false to turn it off.`;
+in the background; set CANONS_NO_UPDATE_CHECK=1 or "notify": false to turn it off.`;
 
 /** The update notice for `root`, or undefined. Never throws, never waits for the network. */
 function noticeFor(root: string): string | undefined {
   try {
     const config = loadConfig(root);
-    if (!config.updateCheck) return undefined;
+    if (!config.notify) return undefined;
     // Not inside canons' own repository.
     if ((readJson(resolve(root, "package.json")) as { name?: string } | undefined)?.name === packageName())
       return undefined;
@@ -149,14 +149,14 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
       const inputs = args.filter((a) => !a.startsWith("--"));
       if (!inputs.length && !changed)
         throw new Error("pass files/directories, or --changed");
-      const config = loadConfig(root);
+      loadConfig(root); // scopes needs a canons repository
       const paths = [
         ...new Set([
           ...expandScopePaths(root, inputs, cwd),
           ...(changed ? changedScopePaths(root) : []),
         ]),
       ].sort();
-      const rules = matchScopeRules(loadScopeRules(root, config.rulesDir), paths);
+      const rules = matchScopeRules(loadScopeRules(root, RULES_DIR), paths);
       const notice = noticeFor(root);
       if (notice) console.error(notice);
       const effective = args.includes("--effective")

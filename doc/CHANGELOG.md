@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+Breaking for `canons.json` and `canons.lock.json`; there is no automatic migration.
+
+- `canons.json` keys have six lowercase letters: `version` → `format`, `clients` → `agents`, `sourceDirs` → `source`, `docDirs` → `docset`, `budgetBytes` → `budget`, `ruleNamePattern` → `naming`, `updateCheck` → `notify`. `rulesDir`, `skillsDir`, `presets` and `hooks` are removed: rules and skills always live in `.agents/rules/` and `.agents/skills/`. Old keys are rejected as unknown.
+- `canons.lock.json` keys likewise: `lockfileVersion` → `format`, `block` → `digest`, `files` → `hashes`. A lock with the old keys is reported as invalid; rename its keys by hand.
+
 ## 0.2.2 (2026-11-18)
 
 This release changes the managed rules (new items C22–C28, tightened C6, C8, C10, C11, C15, C20) and the `CLAUDE.md` adapter, but is published as a patch, so `update` applies it without `--accept-major`. Review the new block after upgrading, and check that the root `AGENTS.md` still fits its budget.

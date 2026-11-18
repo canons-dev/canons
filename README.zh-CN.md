@@ -57,7 +57,7 @@ anchors:              # 可选：这条规则钉住的代码符号
 - 在边界处用 `parseRequest` 校验每个请求体。
 ```
 
-某个 anchor 在 `sourceDirs` 里找不到时 `verify` 会报错，这样改名后规则不会悄悄指向不存在的东西。
+某个 anchor 在 `source` 里找不到时 `verify` 会报错，这样改名后规则不会悄悄指向不存在的东西。
 
 ```sh
 npx canons scopes src/api/users.ts   # 这个路径适用哪些规则？
@@ -77,37 +77,35 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 
 ## 配置
 
-`canons.json`（除 `version` 外都是可选项）：
+`canons.json`（每个 key 都是 6 个小写字母；除 `format` 外都是可选项）：
 
 ```json
 {
-  "version": 1,
+  "format": 1,
   "locale": "zh-CN",
-  "clients": ["codex", "claude"],
+  "agents": ["codex", "claude"],
   "runner": "local",
-  "rulesDir": ".agents/rules",
-  "skillsDir": ".agents/skills",
-  "sourceDirs": ["src"],
-  "docDirs": ["doc"],
-  "budgetBytes": 24576,
-  "ruleNamePattern": "^[a-z]{6}$",
-  "updateCheck": true
+  "source": ["src"],
+  "docset": ["doc"],
+  "budget": 24576,
+  "naming": "^[a-z]{6}$",
+  "notify": true
 }
 ```
 
 - `runner` 决定托管规则让 agent 运行什么命令。`local`（有 `package.json` 时的默认值）写 `npx canons`，要求把包装成 dev dependency，缺了 `verify` 会警告。`npx`（没有 `package.json` 时的默认值）写 `npx -y @canons-dev/canons@<版本>`，固定为最近一次运行 `update` 的版本。
-- `sourceDirs` 列出规则 `anchors` 必须仍能找到的目录（默认 `["src"]`，不搜索 Markdown 文件）。
-- `docDirs` 追加需要 `verify` 检查 Markdown 链接的目录。`AGENTS.md` 和规则始终检查（报 error），技能也检查（报 warning，因为可能是 vendor 进来的上游原文）。代码里的链接不检查。
-- `budgetBytes` 只限制根 `AGENTS.md`（默认 24 KiB，最多 32 KiB），给嵌套的指令文件留出 Codex 能加载的空间。
-- `ruleNamePattern` 可选，用来约束项目自己的顶层规则文件名。
-- `updateCheck: false` 为整个仓库关闭更新提示（见「更新」）。
-- `presets` 和 `hooks` 留给后续版本，目前必须保持为空 / `false`。
+- `format` 是 `canons.json` 自身格式的版本。`agents` 列出要接适配的 coding agent（`codex`、`claude`）。规则和技能固定放在 `.agents/rules/`、`.agents/skills/`（C1）。
+- `source` 列出规则 `anchors` 必须仍能找到的目录（默认 `["src"]`，不搜索 Markdown 文件）。
+- `docset` 追加需要 `verify` 检查 Markdown 链接的目录。`AGENTS.md` 和规则始终检查（报 error），技能也检查（报 warning，因为可能是 vendor 进来的上游原文）。代码里的链接不检查。
+- `budget` 只限制根 `AGENTS.md`（默认 24 KiB，最多 32 KiB），给嵌套的指令文件留出 Codex 能加载的空间。
+- `naming` 可选，用来约束项目自己的顶层规则文件名。
+- `notify: false` 为整个仓库关闭更新提示（见「更新」）。
 
 ## 更新
 
 `canons scopes` 和 `canons doctor` 会在 stderr 用一行提示 canons 有新版本，同一版本每天最多一次。agent 每个任务都会跑 `scopes`，所以在用的仓库都能看到；C3 要求 agent 先完成当前任务再问你，你同意后按托管的 `canons` 技能（`.agents/skills/canons/SKILL.md`）升级：升级是独立的改动，没有你的话不提交。
 
-提示不会拖慢或打断命令：命令只读 `~/.cache/canons`（或 `$XDG_CACHE_HOME`、`CANONS_CACHE_DIR`）里的一个小缓存。缓存超过一天时，起一个脱离的后台进程向 npm registry 查 `latest`（遵循 `npm_config_registry`）然后退出；失败（断网、沙箱、代理）就什么也不显示，第二天再试。stdout 和退出码不变，`verify` 从不联网。设置了 `CI`、`CANONS_NO_UPDATE_CHECK=1` 或 `"updateCheck": false` 时关闭。
+提示不会拖慢或打断命令：命令只读 `~/.cache/canons`（或 `$XDG_CACHE_HOME`、`CANONS_CACHE_DIR`）里的一个小缓存。缓存超过一天时，起一个脱离的后台进程向 npm registry 查 `latest`（遵循 `npm_config_registry`）然后退出；失败（断网、沙箱、代理）就什么也不显示，第二天再试。stdout 和退出码不变，`verify` 从不联网。设置了 `CI`、`CANONS_NO_UPDATE_CHECK=1` 或 `"notify": false` 时关闭。
 
 ## 客户端
 
