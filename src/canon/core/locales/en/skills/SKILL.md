@@ -14,5 +14,5 @@ Outcome: the repository runs the newer canons, the upgrade lands as its own revi
   2. With a package.json: `npm install --save-dev @canons-dev/canons@<version>`. Without one, run the next commands as `npx -y @canons-dev/canons@<version>`.
   3. `update` (with `--accept-major` only after the second yes), then `verify --strict` and the project's own checks.
 - **When blocked** (no network, or a sandbox that protects `.agents/`, as Codex's does): say what blocked you and what the user can do, then stop. The current task is not affected.
-- **Git** follows C8: commit, push or open a PR only if the user asked for it; agreeing to the upgrade is not agreeing to commit.
-- **Report** the versions, what changed (`git diff --stat`), verification results, the PR link if any, and the settlement verdict (C14).
+- **Git** follows C8; agreeing to the upgrade is not agreeing to commit.
+- **Report** per C14, with the versions, `git diff --stat` and the verification results.

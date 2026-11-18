@@ -200,17 +200,7 @@ export function changedScopePaths(root: string): string[] {
   // --no-renames keeps both the old and new path of a rename.
   return [
     ...new Set([
-      ...(hasHead
-        ? gitPaths(root, [
-            "diff",
-            "--cached",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            "HEAD",
-            "--",
-          ])
-        : gitPaths(root, ["diff", "--cached", "--name-only", "-z", "--"])),
+      ...gitPaths(root, ["diff", "--cached", "--name-only", "--no-renames", "-z", ...(hasHead ? ["HEAD"] : []), "--"]),
       ...gitPaths(root, ["diff", "--name-only", "--no-renames", "-z", "--"]),
       ...gitPaths(root, ["ls-files", "--others", "--exclude-standard", "-z"]),
     ]),
@@ -242,6 +232,16 @@ export function expandScopePaths(
   ].sort();
 }
 
+/** "." and every directory down to the one holding `path`, root first. */
+export function ancestors(path: string): string[] {
+  const dirs: string[] = [];
+  for (let dir = posix.dirname(path); ; dir = posix.dirname(dir)) {
+    dirs.unshift(dir);
+    if (dir === ".") break;
+  }
+  return dirs;
+}
+
 export interface Effective {
   file: string;
   bytes: number;
@@ -258,17 +258,11 @@ export function effectiveInstructions(
   rules: ScopeMatch[],
 ): Effective[] {
   const chain = new Set<string>();
-  for (const path of paths) {
-    const dirs: string[] = [];
-    for (let dir = posix.dirname(path); ; dir = posix.dirname(dir)) {
-      dirs.unshift(dir);
-      if (dir === ".") break;
-    }
-    for (const dir of dirs) {
-      const file = dir === "." ? "AGENTS.md" : `${dir}/AGENTS.md`;
+  for (const path of paths)
+    for (const dir of ancestors(path)) {
+      const file = posix.join(dir, "AGENTS.md");
       if (existsSync(resolve(root, file))) chain.add(file);
     }
-  }
   const ordered = [...chain].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
   return [...ordered, ...rules.map((rule) => rule.file)].map((file) => ({
     file,

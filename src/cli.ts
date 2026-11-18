@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // canons CLI entry. Exit code 0 = ok, 1 = errors (or warnings with --strict).
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verify } from "./verify.ts";
 import { RUNNERS, findRoot, loadConfig, type Runner } from "./config.ts";
-import { isBreakingUpgrade, packageName, packageVersion, runnerCommand } from "./content.ts";
+import { isBreakingUpgrade, packageName, packageVersion, readJson, runnerCommand } from "./content.ts";
 import { doctor } from "./doctor.ts";
 import {
   changedScopePaths,
@@ -57,9 +57,8 @@ function noticeFor(root: string): string | undefined {
   try {
     const config = loadConfig(root);
     if (!config.updateCheck) return undefined;
-    const manifest = resolve(root, "package.json");
     // Not inside canons' own repository.
-    if (existsSync(manifest) && (JSON.parse(readFileSync(manifest, "utf8")) as { name?: string }).name === packageName())
+    if ((readJson(resolve(root, "package.json")) as { name?: string } | undefined)?.name === packageName())
       return undefined;
     return updateNotice({
       installed: readLock(root)?.canons ?? packageVersion(),

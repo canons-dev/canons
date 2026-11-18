@@ -1,9 +1,9 @@
 // `canons doctor`: environment diagnostics with fix hints. Informational only.
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
-import { CLAUDE_FILE, isClaudeImport } from "./update.ts";
+import { CLAUDE_FILE, claudeState } from "./update.ts";
 
 export function doctor(root: string): string[] {
   const out: string[] = [];
@@ -26,11 +26,13 @@ export function doctor(root: string): string[] {
   } catch {
     // Unset means the platform default (true outside Windows).
   }
-  const real = [CLAUDE_FILE, ".claude/rules", ".claude/skills"].filter((p) => {
-    const stat = lstatSync(resolve(root, p), { throwIfNoEntry: false });
-    if (!stat || stat.isSymbolicLink()) return false;
-    return !(p === CLAUDE_FILE && stat.isFile() && isClaudeImport(readFileSync(resolve(root, p), "utf8")));
-  });
+  const real = [
+    ...(["own", "other"].includes(claudeState(root)) ? [CLAUDE_FILE] : []),
+    ...[".claude/rules", ".claude/skills"].filter((p) => {
+      const stat = lstatSync(resolve(root, p), { throwIfNoEntry: false });
+      return stat && !stat.isSymbolicLink();
+    }),
+  ];
   if (real.length)
     out.push(
       `fix   ${real.join(", ")} ${real.length === 1 ? "is a real file or directory" : "are real files or directories"}, so other clients cannot read ${real.length === 1 ? "it" : "them"}. Run \`canons create --adopt\` (or \`canons update --adopt\`) to move ${real.length === 1 ? "it" : "them"} into AGENTS.md / .agents/ and link ${real.length === 1 ? "it" : "them"}.`,

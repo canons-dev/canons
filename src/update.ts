@@ -91,9 +91,20 @@ export function readLock(root: string): Lock | undefined {
 export const CLAUDE_FILE = "CLAUDE.md";
 export const CLAUDE_IMPORT = `@${ROOT_FILE}\n`;
 
-/** True when `text` is exactly the import line (trailing whitespace aside). */
-export function isClaudeImport(text: string): boolean {
-  return text.trim() === CLAUDE_IMPORT.trim();
+/**
+ * What CLAUDE.md is now: `import` is the adapter; `legacy` is the symlink to
+ * AGENTS.md that earlier versions wrote; `symlink` points elsewhere; `own` is a
+ * file with its own content; `other` is a directory or special file.
+ */
+export type ClaudeState = "missing" | "import" | "legacy" | "symlink" | "own" | "other";
+
+export function claudeState(root: string): ClaudeState {
+  const abs = resolve(root, CLAUDE_FILE);
+  const stat = lstatSync(abs, { throwIfNoEntry: false });
+  if (!stat) return "missing";
+  if (stat.isSymbolicLink()) return readlinkSync(abs) === ROOT_FILE ? "legacy" : "symlink";
+  if (!stat.isFile()) return "other";
+  return readFileSync(abs, "utf8").trim() === CLAUDE_IMPORT.trim() ? "import" : "own";
 }
 
 /** Client adapter links: link path -> relative target, both repo-relative. */
@@ -169,26 +180,19 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
   }
   // CLAUDE.md imports AGENTS.md. A symlink to AGENTS.md is the old adapter and is
   // replaced; any other content is moved with --adopt or refused.
-  let writeClaude = false;
-  if (config.clients.includes("claude")) {
-    const abs = resolve(root, CLAUDE_FILE);
-    const stat = lstatSync(abs, { throwIfNoEntry: false });
-    if (!stat) writeClaude = true;
-    else if (stat.isSymbolicLink()) {
-      if (readlinkSync(abs) !== ROOT_FILE)
-        throw new Error(
-          `${CLAUDE_FILE} is a symlink to ${readlinkSync(abs)}. Remove it and rerun; canons writes a ${CLAUDE_FILE} that imports ${ROOT_FILE}.`,
-        );
-      writeClaude = true;
-    } else if (!stat.isFile() || !isClaudeImport(readFileSync(abs, "utf8"))) {
-      if (!options.adopt)
-        throw new Error(
-          `${CLAUDE_FILE} exists with its own content. Rerun with --adopt to move it into ${ROOT_FILE}, or merge it into ${ROOT_FILE} (outside the canons block) by hand and remove it.`,
-        );
-      adoptions.push(planAdoption(root, CLAUDE_FILE, ROOT_FILE));
-      writeClaude = true;
-    }
+  const claude = config.clients.includes("claude") ? claudeState(root) : "import";
+  if (claude === "symlink" || claude === "other")
+    throw new Error(
+      `${CLAUDE_FILE} is ${claude === "symlink" ? `a symlink to ${readlinkSync(resolve(root, CLAUDE_FILE))}` : "not a regular file"}. Remove it and rerun; canons writes a ${CLAUDE_FILE} that imports ${ROOT_FILE}.`,
+    );
+  if (claude === "own") {
+    if (!options.adopt)
+      throw new Error(
+        `${CLAUDE_FILE} exists with its own content. Rerun with --adopt to move it into ${ROOT_FILE}, or merge it into ${ROOT_FILE} (outside the canons block) by hand and remove it.`,
+      );
+    adoptions.push(planAdoption(root, CLAUDE_FILE, ROOT_FILE));
   }
+  const writeClaude = claude !== "import";
 
   // Refuse to overwrite local edits to managed content.
   const rootPath = resolve(root, ROOT_FILE);
@@ -340,20 +344,4 @@ export function create(root: string, options: CreateOptions = {}): string[] {
   const log = apply(root, parseConfig(declared), options);
   writeFileSync(configPath, `${JSON.stringify(declared, null, 2)}\n`);
   return [...log, `created ${CONFIG_FILE} (runner: ${runner})`];
-}
-
-/** Used by verify: lists repo-relative paths of files under a dir, recursively. */
-export function filesUnder(root: string, dir: string): string[] {
-  const abs = resolve(root, dir);
-  if (!existsSync(abs)) return [];
-  const out: string[] = [];
-  const walk = (sub: string) => {
-    for (const e of readdirSync(resolve(abs, sub), { withFileTypes: true })) {
-      const rel = sub ? `${sub}/${e.name}` : e.name;
-      if (e.isDirectory()) walk(rel);
-      else out.push(relative(root, resolve(abs, rel)).split("\\").join("/"));
-    }
-  };
-  walk("");
-  return out.sort();
 }

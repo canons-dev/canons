@@ -1,4 +1,4 @@
-# canons
+# Canons
 
 One source of truth for the instructions your coding agents follow — `AGENTS.md`, path-scoped rules and skills — shared by Codex, Claude Code and other clients, and kept honest by deterministic checks.
 

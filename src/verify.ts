@@ -22,9 +22,13 @@ import {
   extractBlock,
   loadCanon,
   packageName,
+  readJson,
   sha256,
+  type Lock,
 } from "./content.ts";
 import {
+  ancestors,
+  effectiveInstructions,
   globToRe,
   listMarkdown,
   loadScopeRules,
@@ -36,8 +40,10 @@ import { checkSkill } from "./skills.ts";
 import {
   CLAUDE_FILE,
   CLAUDE_IMPORT,
+  claudeState,
   clientLinks,
-  isClaudeImport,
+  managedRulePath,
+  managedSkillPath,
   presentManagedFiles,
   readLock,
 } from "./update.ts";
@@ -59,7 +65,7 @@ const FENCE_RE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 const SPAN_RE = /`[^`\n]*`/g;
 
 /** Relative link targets in a Markdown file, as written and resolved; code spans and fences are skipped. */
-export function localLinks(abs: string): { target: string; path: string }[] {
+function localLinks(abs: string): { target: string; path: string }[] {
   const text = readFileSync(abs, "utf8").replace(FENCE_RE, "").replace(SPAN_RE, "");
   const base = dirname(realpathSync(abs));
   const links: { target: string; path: string }[] = [];
@@ -78,7 +84,7 @@ export function localLinks(abs: string): { target: string; path: string }[] {
 }
 
 /** Relative link targets in a Markdown file that do not exist; code spans and fences are skipped. */
-export function brokenLinks(abs: string): string[] {
+function brokenLinks(abs: string): string[] {
   return localLinks(abs)
     .filter((link) => !existsSync(link.path))
     .map((link) => link.target);
@@ -90,7 +96,7 @@ function lineCount(text: string): number {
 }
 
 /** Rules and SKILL.md files longer than this get a warning; long files dilute what agents follow. */
-export const MAX_LINES = 500;
+const MAX_LINES = 500;
 
 /** Inline code spans and fenced blocks of a Markdown text. */
 function codeOf(text: string): { spans: string[]; fences: string[] } {
@@ -122,28 +128,22 @@ export function staleReferences(root: string, file: string, text: string): strin
   const out: string[] = [];
   const { spans, fences } = codeOf(text);
   // The nearest package.json at or above the file, within the repository.
-  let manifestPath = "";
-  for (let dir = posix.dirname(file); !manifestPath; dir = posix.dirname(dir)) {
-    if (existsSync(resolve(root, dir, "package.json"))) manifestPath = resolve(root, dir, "package.json");
-    if (dir === ".") break;
-  }
-  if (manifestPath) {
-    let scripts: Record<string, unknown> | undefined;
-    try {
-      scripts = (JSON.parse(readFileSync(manifestPath, "utf8")) as { scripts?: Record<string, unknown> }).scripts;
-    } catch {
-      scripts = undefined;
-    }
+  const manifest = ancestors(file)
+    .reverse()
+    .map((dir) => posix.join(dir, "package.json"))
+    .find((path) => existsSync(resolve(root, path)));
+  if (manifest) {
+    const scripts = (readJson(resolve(root, manifest)) as { scripts?: Record<string, unknown> } | undefined)?.scripts;
     const missing = new Set<string>();
     for (const line of [...spans, ...fences].flatMap((code) => code.split("\n"))) {
       // Another package's scripts: a workspace, a prefix or a changed directory.
       if (/(?:^|\s)(?:--prefix|-w|--workspace|-C|cd)(?:\s|=)/.test(line)) continue;
-      for (const m of line.matchAll(/\bnpm\s+(?:run(?:-script)?\s+([A-Za-z0-9:_.-]+)|(test)\b)/g)) {
+      // Flags before the script name (`npm run -s build`) are skipped.
+      for (const m of line.matchAll(/\bnpm\s+(?:run(?:-script)?\s+(?:-\S+\s+)*([A-Za-z0-9][A-Za-z0-9:_.-]*)|(test)\b)/g)) {
         const name = (m[1] ?? m[2])!;
         if (!scripts || !(name in scripts)) missing.add(m[0].replace(/\s+/g, " "));
       }
     }
-    const manifest = posix.relative(root.split("\\").join("/"), manifestPath.split("\\").join("/"));
     for (const command of missing)
       out.push(`${file}: \`${command}\` has no "${command.split(" ").pop()}" script in ${manifest}`);
   }
@@ -232,12 +232,16 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     return { errors: [(error as Error).message], warnings };
   }
   const files = listFiles(root);
-  const fileSet = new Set(files);
 
   // 1. Root file, managed block, lock.
   const rootPath = resolve(root, ROOT_FILE);
-  const lock = readLock(root);
-  if (!lock) errors.push(`canons.lock.json is missing; run "canons update"`);
+  let lock: Lock | undefined;
+  try {
+    lock = readLock(root);
+    if (!lock) errors.push(`canons.lock.json is missing; run "canons update"`);
+  } catch (error) {
+    errors.push((error as Error).message);
+  }
   if (!existsSync(rootPath)) errors.push(`${ROOT_FILE} is missing`);
   else {
     const text = readFileSync(rootPath, "utf8");
@@ -291,15 +295,7 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
   // The local runner's `npx canons` only resolves when the package is installed.
   if (config.runner === "local") {
     const name = packageName();
-    const manifestPath = resolve(root, "package.json");
-    let manifest: Record<string, unknown> | undefined;
-    try {
-      manifest = existsSync(manifestPath)
-        ? (JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>)
-        : undefined;
-    } catch {
-      manifest = undefined;
-    }
+    const manifest = readJson(resolve(root, "package.json")) as Record<string, unknown> | undefined;
     const declared = ["devDependencies", "dependencies"].some(
       (key) => typeof manifest?.[key] === "object" && name in (manifest[key] as object),
     );
@@ -317,28 +313,12 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
         `${file}: Codex reads it instead of AGENTS.md in that directory, bypassing the canons block; remove it (personal overrides belong in ~/.codex)`,
       );
   const agentsFiles = files.filter((f) => posix.basename(f) === ROOT_FILE);
-  const size = (f: string) =>
-    statSync(resolve(root, f), { throwIfNoEntry: false })?.size ?? 0;
   for (const file of agentsFiles) {
-    let total = 0;
-    const chain: string[] = [];
-    let dir = posix.dirname(file);
-    const dirs: string[] = [];
-    for (;;) {
-      dirs.unshift(dir);
-      if (dir === ".") break;
-      dir = posix.dirname(dir);
-    }
-    for (const d of dirs) {
-      const candidate = d === "." ? ROOT_FILE : `${d}/${ROOT_FILE}`;
-      if (fileSet.has(candidate) || (d === "." && existsSync(rootPath))) {
-        total += size(candidate);
-        chain.push(candidate);
-      }
-    }
+    const chain = effectiveInstructions(root, [file], []);
+    const total = chain.reduce((sum, e) => sum + e.bytes, 0);
     if (total > CODEX_CHAIN_MAX_BYTES)
       errors.push(
-        `${chain.join(" + ")} = ${total} bytes; Codex stops loading project instructions at ${CODEX_CHAIN_MAX_BYTES} bytes`,
+        `${chain.map((e) => e.file).join(" + ")} = ${total} bytes; Codex stops loading project instructions at ${CODEX_CHAIN_MAX_BYTES} bytes`,
       );
   }
 
@@ -354,28 +334,29 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     else if (!existsSync(abs)) errors.push(`${link} is a dangling symlink`);
   }
   if (config.clients.includes("claude")) {
-    const abs = resolve(root, CLAUDE_FILE);
-    const stat = lstatSync(abs, { throwIfNoEntry: false });
+    const state = claudeState(root);
     const want = JSON.stringify(CLAUDE_IMPORT.trim());
-    if (!stat) errors.push(`${CLAUDE_FILE} is missing; run "canons update"`);
-    else if (stat.isSymbolicLink())
+    if (state === "missing") errors.push(`${CLAUDE_FILE} is missing; run "canons update"`);
+    else if (state === "legacy" || state === "symlink")
       errors.push(`${CLAUDE_FILE} is a symlink; run "canons update" to replace it with the import ${want}`);
-    else if (!stat.isFile() || !isClaudeImport(readFileSync(abs, "utf8")))
+    else if (state !== "import")
       errors.push(
         `${CLAUDE_FILE} must hold only the import ${want}; move its content into ${ROOT_FILE} (canons update --adopt does this)`,
       );
   }
 
-  // 4. Rule files: parseable frontmatter, valid globs, naming, links.
+  // 4. Rule files: parseable frontmatter, valid globs, naming, links, length.
+  const managedRules = managedRulePath(config, "");
+  const managedSkills = managedSkillPath(config, "");
   const rulesAbs = resolve(root, config.rulesDir);
+  const ruleFiles = existsSync(rulesAbs) ? listMarkdown(rulesAbs) : [];
   if (!existsSync(rulesAbs)) errors.push(`${config.rulesDir} is missing`);
   else {
     try {
       const rules = loadScopeRules(root, config.rulesDir);
       errors.push(...anchorErrors(root, config, files, rules));
-      const managedPrefix = `${config.rulesDir}/${MANAGED_SUBDIR}/`;
       // Managed rules are generic and may name files a project does not have.
-      for (const rule of rules.filter((r) => !r.file.startsWith(managedPrefix)))
+      for (const rule of rules.filter((r) => !r.file.startsWith(managedRules)))
         for (const glob of rule.paths) {
           const re = globToRe(glob);
           if (!files.some((f) => re.test(f)))
@@ -386,7 +367,6 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     } catch (error) {
       errors.push((error as Error).message);
     }
-    const ruleFiles = listMarkdown(rulesAbs);
     if (config.ruleNamePattern) {
       const re = new RegExp(config.ruleNamePattern);
       for (const file of ruleFiles)
@@ -395,11 +375,16 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
             `${config.rulesDir}/${file}: name does not match ruleNamePattern ${config.ruleNamePattern}`,
           );
     }
-    for (const file of ruleFiles)
+    for (const file of ruleFiles) {
       for (const target of brokenLinks(resolve(rulesAbs, file)))
         errors.push(
           `${config.rulesDir}/${file}: broken link ${target} (links resolve from the rule's own directory)`,
         );
+      // Long rules dilute what agents follow.
+      const lines = lineCount(readFileSync(resolve(rulesAbs, file), "utf8"));
+      if (lines > MAX_LINES)
+        warnings.push(`${config.rulesDir}/${file}: ${lines} lines, over ${MAX_LINES}; split it or move detail into docs`);
+    }
   }
 
   // 5. Links in the other instruction files and in docDirs resolve from the file's own directory.
@@ -417,7 +402,6 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
       warnings.push(`${file}: broken link ${target}`);
 
   // 6. Skills follow the Agent Skills format; long files and nested references are warnings.
-  const managedSkills = `${config.skillsDir}/${MANAGED_SUBDIR}/`;
   for (const file of under(config.skillsDir).filter((f) => posix.basename(f) === "SKILL.md")) {
     const abs = resolve(root, file);
     errors.push(...checkSkill(root, file));
@@ -443,24 +427,14 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     }
   }
 
-  // 7. Long rules dilute what agents follow.
-  const projectRules = existsSync(rulesAbs)
-    ? listMarkdown(rulesAbs).map((f) => `${config.rulesDir}/${f}`)
-    : [];
-  for (const file of projectRules) {
-    const lines = lineCount(readFileSync(resolve(root, file), "utf8"));
-    if (lines > MAX_LINES) warnings.push(`${file}: ${lines} lines, over ${MAX_LINES}; split it or move detail into docs`);
-  }
-
-  // 8. Project instruction text (managed content aside) still names scripts and paths that exist.
-  const managedRules = `${config.rulesDir}/${MANAGED_SUBDIR}/`;
+  // 7. Project instruction text (managed content aside) still names scripts and paths that exist.
   const projectText: [string, string][] = [];
   for (const file of instructionFiles) {
     const text = readFileSync(resolve(root, file), "utf8").replace(/\r\n/g, "\n");
     projectText.push([file, text.replace(/<!-- canons:begin[\s\S]*?<!-- canons:end -->/, "")]);
   }
   for (const file of [
-    ...projectRules.filter((f) => !f.startsWith(managedRules)),
+    ...ruleFiles.map((f) => `${config.rulesDir}/${f}`).filter((f) => !f.startsWith(managedRules)),
     ...under(config.skillsDir).filter((f) => !f.startsWith(managedSkills)),
   ])
     projectText.push([file, readFileSync(resolve(root, file), "utf8")]);

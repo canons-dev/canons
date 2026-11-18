@@ -27,6 +27,7 @@ import {
   matchScopeRules,
 } from "../rules.ts";
 import { create, update } from "../update.ts";
+import { doctor } from "../doctor.ts";
 
 // The update notice reads and refreshes a per-user cache; keep tests away from it.
 process.env.CANONS_NO_UPDATE_CHECK = "1";
@@ -419,7 +420,7 @@ test("verify warns about scripts and paths that project instructions name but no
   writeFileSync(
     agentsPath,
     `${readFileSync(agentsPath, "utf8")}
-- Run \`npm run lint\` and \`npm test\`; \`npm run build -w web\` is another package.
+- Run \`npm run lint\` and \`npm test\`; \`npm run -s test\`, \`npm run --silent test\`; \`npm run build -w web\`, \`npm --prefix web run build\` and \`cd web && npm run build\` are another package.
 - Handlers: \`src/api/\`, \`src/gone.ts\`, \`src/api/hello.ts:3\`, \`next/server.js\`, \`@scope/pkg\`, \`../sibling/x.md\`, \`tmp/notes.md\`, \`src/**\`.
 
 \`\`\`sh
@@ -439,6 +440,55 @@ npm run deploy
     [],
     "managed content is not checked",
   );
+
+  // A nested package.json answers for files below it; skill paths also resolve from the skill.
+  mkdirSync(join(root, "web/.agents"), { recursive: true });
+  writeFileSync(join(root, "web/package.json"), '{"scripts":{"build":"x"}}');
+  writeFileSync(join(root, "web/AGENTS.md"), "Run `npm run build` and `npm run lint`.\n");
+  mkdirSync(join(root, ".agents/skills/ship/scripts"), { recursive: true });
+  writeFileSync(join(root, ".agents/skills/ship/scripts/run.sh"), "");
+  writeFileSync(
+    join(root, ".agents/skills/ship/SKILL.md"),
+    "---\nname: ship\ndescription: Ship.\n---\n\nRun `scripts/run.sh`, not `scripts/old.sh`.\n",
+  );
+  const nested = verify(root).warnings.filter((w) => w.startsWith("web/") || w.includes("ship/"));
+  assert.deepEqual(nested.sort(), [
+    ".agents/skills/ship/SKILL.md: `.agents/skills/ship/scripts/old.sh` does not exist",
+    'web/AGENTS.md: `npm run lint` has no "lint" script in web/package.json',
+  ]);
+
+  // An unparsable package.json has no scripts, so every one is reported.
+  writeFileSync(join(root, "web/package.json"), "{");
+  assert.match(verify(root).warnings.join("\n"), /web\/AGENTS\.md: `npm run build` has no "build" script/);
+});
+
+test("a corrupt lock file is reported, not a crash", () => {
+  const root = synced();
+  for (const text of ["null", "{", "[]"]) {
+    writeFileSync(join(root, "canons.lock.json"), text);
+    assert.match(errorsOf(root), /canons\.lock\.json is not a valid canons lock file/);
+    assert.throws(() => update(root), /not a valid canons lock file/);
+  }
+});
+
+test("a CLAUDE.md directory is refused before anything is written", () => {
+  const root = synced();
+  rmSync(join(root, "CLAUDE.md"));
+  mkdirSync(join(root, "CLAUDE.md"));
+  writeFileSync(join(root, "CLAUDE.md/notes.md"), "x\n");
+  const before = readFileSync(join(root, "AGENTS.md"), "utf8");
+  assert.throws(() => update(root, { adopt: true }), /CLAUDE\.md is not a regular file/);
+  assert.equal(readFileSync(join(root, "AGENTS.md"), "utf8"), before);
+  assert.match(errorsOf(root), /CLAUDE\.md must hold only the import/);
+});
+
+test("doctor points real client files at --adopt", () => {
+  const root = synced();
+  assert.ok(!doctor(root).some((line) => line.includes("--adopt")), "a clean setup needs no fix");
+  writeFileSync(join(root, "CLAUDE.md"), "own notes\n");
+  assert.ok(doctor(root).some((line) => line.startsWith("fix   CLAUDE.md is a real file") && line.includes("--adopt")));
+  writeFileSync(join(root, "canons.json"), "{");
+  assert.ok(doctor(root).some((line) => line.startsWith("fix   canons.json is not valid JSON")));
 });
 
 test("scopes --effective lists the AGENTS.md chain and matched rules with byte counts", () => {
@@ -454,6 +504,16 @@ test("scopes --effective lists the AGENTS.md chain and matched rules with byte c
     console.log = log;
   }
   const result = JSON.parse(out.join("\n")) as { effective: { file: string; bytes: number }[]; bytes: number };
+  out.length = 0;
+  console.log = (line: string) => out.push(line);
+  try {
+    assert.equal(main(["scopes", "--effective", "src/api"], root), 0);
+  } finally {
+    console.log = log;
+  }
+  const text = out.join("\n");
+  assert.match(text, /Effective instructions: \d+ file\(s\), \d+ bytes/);
+  assert.match(text, /^\s+6  src\/api\/AGENTS\.md$/m);
   const files = result.effective.map((e) => e.file);
   assert.deepEqual(files.slice(0, 2), ["AGENTS.md", "src/api/AGENTS.md"]);
   assert.ok(files.includes(".agents/rules/apis.md"));

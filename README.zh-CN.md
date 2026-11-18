@@ -1,4 +1,4 @@
-# canons
+# Canons
 
 为 coding agent 的指令（`AGENTS.md`、按路径生效的规则、技能）提供唯一真源，Codex、Claude Code 等客户端共用同一份内容，并由确定性检查守住。
 

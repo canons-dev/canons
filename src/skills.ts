@@ -4,9 +4,9 @@ import { readFileSync } from "node:fs";
 import { posix, resolve } from "node:path";
 import { frontmatter } from "./rules.ts";
 
-export const NAME_MAX = 64;
-export const DESCRIPTION_MAX = 1024;
-export const COMPATIBILITY_MAX = 500;
+const NAME_MAX = 64;
+const DESCRIPTION_MAX = 1024;
+const COMPATIBILITY_MAX = 500;
 
 /**
  * Top-level scalar keys of YAML frontmatter: plain, quoted, block (`|`, `>`)
@@ -19,7 +19,7 @@ export function frontmatterScalars(fm: string): Map<string, string> {
   for (let i = 0; i < lines.length; i++) {
     const m = /^([A-Za-z0-9_-]+):(?:\s+(.*))?$/.exec(lines[i]!);
     if (!m) continue;
-    let value = (m[2] ?? "").replace(/\s+#.*$/, "").trim();
+    let value = (m[2] ?? "").trim();
     const more: string[] = [];
     while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]!) || !lines[i + 1]!.trim())) more.push(lines[++i]!);
     const cont = more.map((line) => line.trim());
@@ -32,7 +32,7 @@ export function frontmatterScalars(fm: string): Map<string, string> {
     } else if (/^'/.test(value)) {
       const joined = [value, ...cont].join(" ").trim();
       value = joined.replace(/^'|'$/g, "").replace(/''/g, "'");
-    } else if (value) value = [value, ...cont.filter(Boolean)].join(" ");
+    } else if (value) value = [value.replace(/\s+#.*$/, ""), ...cont.filter(Boolean)].join(" ");
     out.set(m[1]!, value);
   }
   return out;
