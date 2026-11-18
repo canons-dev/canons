@@ -87,11 +87,19 @@ export function readLock(root: string): Lock | undefined {
   return existsSync(file) ? parseLock(readFileSync(file, "utf8")) : undefined;
 }
 
+/** Claude Code's entry file: it imports AGENTS.md instead of linking to it. */
+export const CLAUDE_FILE = "CLAUDE.md";
+export const CLAUDE_IMPORT = `@${ROOT_FILE}\n`;
+
+/** True when `text` is exactly the import line (trailing whitespace aside). */
+export function isClaudeImport(text: string): boolean {
+  return text.trim() === CLAUDE_IMPORT.trim();
+}
+
 /** Client adapter links: link path -> relative target, both repo-relative. */
 export function clientLinks(config: CanonsConfig): Map<string, string> {
   const links = new Map<string, string>();
   if (config.clients.includes("claude")) {
-    links.set("CLAUDE.md", ROOT_FILE);
     links.set(".claude/rules", posix.relative(".claude", config.rulesDir));
     links.set(".claude/skills", posix.relative(".claude", config.skillsDir));
   }
@@ -158,6 +166,28 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
       );
     if (stat) adoptions.push(planAdoption(root, link, target));
     links.push([link, target]);
+  }
+  // CLAUDE.md imports AGENTS.md. A symlink to AGENTS.md is the old adapter and is
+  // replaced; any other content is moved with --adopt or refused.
+  let writeClaude = false;
+  if (config.clients.includes("claude")) {
+    const abs = resolve(root, CLAUDE_FILE);
+    const stat = lstatSync(abs, { throwIfNoEntry: false });
+    if (!stat) writeClaude = true;
+    else if (stat.isSymbolicLink()) {
+      if (readlinkSync(abs) !== ROOT_FILE)
+        throw new Error(
+          `${CLAUDE_FILE} is a symlink to ${readlinkSync(abs)}. Remove it and rerun; canons writes a ${CLAUDE_FILE} that imports ${ROOT_FILE}.`,
+        );
+      writeClaude = true;
+    } else if (!stat.isFile() || !isClaudeImport(readFileSync(abs, "utf8"))) {
+      if (!options.adopt)
+        throw new Error(
+          `${CLAUDE_FILE} exists with its own content. Rerun with --adopt to move it into ${ROOT_FILE}, or merge it into ${ROOT_FILE} (outside the canons block) by hand and remove it.`,
+        );
+      adoptions.push(planAdoption(root, CLAUDE_FILE, ROOT_FILE));
+      writeClaude = true;
+    }
   }
 
   // Refuse to overwrite local edits to managed content.
@@ -269,6 +299,11 @@ function apply(root: string, config: CanonsConfig, options: UpdateOptions): stri
   for (const [link, target] of links) {
     symlinkSync(target, resolve(root, link));
     log.push(`linked ${link} -> ${target}`);
+  }
+  if (writeClaude) {
+    rmSync(resolve(root, CLAUDE_FILE), { force: true });
+    writeFileSync(resolve(root, CLAUDE_FILE), CLAUDE_IMPORT);
+    log.push(`wrote ${CLAUDE_FILE} (imports ${ROOT_FILE})`);
   }
 
   const nextLock: Lock = {

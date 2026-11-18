@@ -2,8 +2,8 @@
 // Read-only, no network. Unsupported syntax must throw: a silently ignored
 // declaration means a rule that never fires.
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, posix, relative, resolve, sep } from "node:path";
 
 /** Parses a top-level YAML block list (`key:` followed by `  - item` lines). */
 export function parseListKey(source: string, key: string): string[] {
@@ -240,4 +240,38 @@ export function expandScopePaths(
       }),
     ),
   ].sort();
+}
+
+export interface Effective {
+  file: string;
+  bytes: number;
+}
+
+/**
+ * Every instruction file a client loads for `paths`: the AGENTS.md files from
+ * the root down to each path's directory (the chain Codex reads), then the
+ * matched rules. Skills load on demand and are not listed.
+ */
+export function effectiveInstructions(
+  root: string,
+  paths: string[],
+  rules: ScopeMatch[],
+): Effective[] {
+  const chain = new Set<string>();
+  for (const path of paths) {
+    const dirs: string[] = [];
+    for (let dir = posix.dirname(path); ; dir = posix.dirname(dir)) {
+      dirs.unshift(dir);
+      if (dir === ".") break;
+    }
+    for (const dir of dirs) {
+      const file = dir === "." ? "AGENTS.md" : `${dir}/AGENTS.md`;
+      if (existsSync(resolve(root, file))) chain.add(file);
+    }
+  }
+  const ordered = [...chain].sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b));
+  return [...ordered, ...rules.map((rule) => rule.file)].map((file) => ({
+    file,
+    bytes: statSync(resolve(root, file)).size,
+  }));
 }

@@ -1,8 +1,9 @@
 // `canons doctor`: environment diagnostics with fix hints. Informational only.
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadConfig } from "./config.ts";
+import { CLAUDE_FILE, isClaudeImport } from "./update.ts";
 
 export function doctor(root: string): string[] {
   const out: string[] = [];
@@ -20,14 +21,15 @@ export function doctor(root: string): string[] {
     }).trim();
     if (symlinks === "false")
       out.push(
-        "fix   git core.symlinks=false: client adapters would be checked out as plain files. Run `git config core.symlinks true` (on Windows enable Developer Mode first) and re-checkout.",
+        "fix   git core.symlinks=false: the .claude/rules and .claude/skills links would be checked out as plain files. Run `git config core.symlinks true` (on Windows enable Developer Mode first) and re-checkout.",
       );
   } catch {
     // Unset means the platform default (true outside Windows).
   }
-  const real = ["CLAUDE.md", ".claude/rules", ".claude/skills"].filter((p) => {
+  const real = [CLAUDE_FILE, ".claude/rules", ".claude/skills"].filter((p) => {
     const stat = lstatSync(resolve(root, p), { throwIfNoEntry: false });
-    return stat && !stat.isSymbolicLink();
+    if (!stat || stat.isSymbolicLink()) return false;
+    return !(p === CLAUDE_FILE && stat.isFile() && isClaudeImport(readFileSync(resolve(root, p), "utf8")));
   });
   if (real.length)
     out.push(
@@ -47,7 +49,7 @@ export function doctor(root: string): string[] {
     );
   if (clients.includes("claude"))
     out.push(
-      "note  Claude Code loads .claude/rules recursively and honors only the `paths` frontmatter key; queries via `canons scopes` still apply.",
+      "note  Claude Code reads CLAUDE.md, which imports AGENTS.md (`@AGENTS.md`), and loads .claude/rules recursively, honoring only the `paths` frontmatter key; queries via `canons scopes` still apply.",
     );
   out.push(
     "note  Cursor and GitHub Copilot read AGENTS.md natively. For Gemini CLI set context.fileName to [\"AGENTS.md\"] in .gemini/settings.json.",

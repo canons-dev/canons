@@ -9,6 +9,7 @@ import { isBreakingUpgrade, packageName, packageVersion, runnerCommand } from ".
 import { doctor } from "./doctor.ts";
 import {
   changedScopePaths,
+  effectiveInstructions,
   expandScopePaths,
   loadScopeRules,
   matchScopeRules,
@@ -37,8 +38,10 @@ Usage:
                                      --adopt moves an existing CLAUDE.md, .claude/rules or
                                      .claude/skills into AGENTS.md / .agents/ and links it
   canons verify [--strict]           deterministic hygiene checks (for CI and pre-commit)
-  canons scopes [--changed] [--json] <file-or-dir>...
-                                     list the rules that apply to the given paths
+  canons scopes [--changed] [--effective] [--json] <file-or-dir>...
+                                     list the rules that apply to the given paths;
+                                     --effective also lists every AGENTS.md and rule
+                                     loaded for them, with byte counts
   canons latest [--json] [--decline <version>]
                                      compare with the newest published version (network);
                                      --decline stops the notice for that version
@@ -142,7 +145,7 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
       return failed ? 1 : 0;
     }
     case "scopes": {
-      assertFlags(args, ["--changed", "--json"]);
+      assertFlags(args, ["--changed", "--effective", "--json"]);
       const changed = args.includes("--changed");
       const inputs = args.filter((a) => !a.startsWith("--"));
       if (!inputs.length && !changed)
@@ -157,8 +160,12 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
       const rules = matchScopeRules(loadScopeRules(root, config.rulesDir), paths);
       const notice = noticeFor(root);
       if (notice) console.error(notice);
+      const effective = args.includes("--effective")
+        ? effectiveInstructions(root, paths, rules)
+        : undefined;
+      const total = effective?.reduce((sum, e) => sum + e.bytes, 0);
       if (args.includes("--json")) {
-        console.log(JSON.stringify({ paths, rules }, null, 2));
+        console.log(JSON.stringify(effective ? { paths, rules, effective, bytes: total } : { paths, rules }, null, 2));
         return 0;
       }
       console.log(
@@ -169,6 +176,10 @@ export function main(argv: string[], cwd = process.cwd()): number | Promise<numb
         if (!rule.matches.length) console.log("  global rule (no paths)");
         for (const { path, glob } of rule.matches)
           console.log(`  ${path} <- ${glob}`);
+      }
+      if (effective) {
+        console.log(`\nEffective instructions: ${effective.length} file(s), ${total} bytes`);
+        for (const { file, bytes } of effective) console.log(`  ${String(bytes).padStart(7)}  ${file}`);
       }
       return 0;
     }

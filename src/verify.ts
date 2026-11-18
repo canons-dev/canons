@@ -8,6 +8,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, posix, resolve } from "node:path";
 import {
   CODEX_CHAIN_MAX_BYTES,
@@ -31,7 +32,15 @@ import {
   repoFiles,
   staticPrefix,
 } from "./rules.ts";
-import { clientLinks, presentManagedFiles, readLock } from "./update.ts";
+import { checkSkill } from "./skills.ts";
+import {
+  CLAUDE_FILE,
+  CLAUDE_IMPORT,
+  clientLinks,
+  isClaudeImport,
+  presentManagedFiles,
+  readLock,
+} from "./update.ts";
 
 export interface VerifyResult {
   errors: string[];
@@ -46,13 +55,14 @@ export interface VerifyOptions {
 // balanced parentheses, as in framework route groups such as `(app)`.
 const LINK_RE = /\]\(\s*(?:<([^>\n]+)>|([^()\s]+(?:\([^()\s]*\)[^()\s]*)*))\s*(?:"[^"]*")?\)/g;
 
-/** Relative link targets in a Markdown file that do not exist; code spans and fences are skipped. */
-export function brokenLinks(abs: string): string[] {
-  const text = readFileSync(abs, "utf8")
-    .replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "")
-    .replace(/`[^`\n]*`/g, "");
+const FENCE_RE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+const SPAN_RE = /`[^`\n]*`/g;
+
+/** Relative link targets in a Markdown file, as written and resolved; code spans and fences are skipped. */
+export function localLinks(abs: string): { target: string; path: string }[] {
+  const text = readFileSync(abs, "utf8").replace(FENCE_RE, "").replace(SPAN_RE, "");
   const base = dirname(realpathSync(abs));
-  const broken: string[] = [];
+  const links: { target: string; path: string }[] = [];
   for (const m of text.matchAll(LINK_RE)) {
     const target = (m[1] ?? m[2])!;
     let raw = target.split("#")[0]!.trim();
@@ -62,9 +72,107 @@ export function brokenLinks(abs: string): string[] {
       // Keep a target with a stray % as written.
     }
     if (!raw || /^[a-z][a-z0-9+.-]*:/i.test(raw)) continue;
-    if (!existsSync(resolve(base, raw))) broken.push(target);
+    links.push({ target, path: resolve(base, raw) });
   }
-  return broken;
+  return links;
+}
+
+/** Relative link targets in a Markdown file that do not exist; code spans and fences are skipped. */
+export function brokenLinks(abs: string): string[] {
+  return localLinks(abs)
+    .filter((link) => !existsSync(link.path))
+    .map((link) => link.target);
+}
+
+/** Lines in a text file, counting a last line without a newline. */
+function lineCount(text: string): number {
+  return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+}
+
+/** Rules and SKILL.md files longer than this get a warning; long files dilute what agents follow. */
+export const MAX_LINES = 500;
+
+/** Inline code spans and fenced blocks of a Markdown text. */
+function codeOf(text: string): { spans: string[]; fences: string[] } {
+  const fences = [...text.matchAll(FENCE_RE)].map((m) => m[0]);
+  const spans = [...text.replace(FENCE_RE, "").matchAll(SPAN_RE)].map((m) => m[0].slice(1, -1).trim());
+  return { spans, fences };
+}
+
+/** Paths among `paths` (repo-relative) that git ignores; they may legitimately be absent. */
+function ignoredPaths(root: string, paths: string[]): Set<string> {
+  if (!paths.length) return new Set();
+  const result = spawnSync("git", ["check-ignore", "--no-index", "--stdin", "-z"], {
+    cwd: root,
+    input: paths.join("\0"),
+    encoding: "utf8",
+  });
+  return new Set((result.stdout ?? "").split("\0").filter(Boolean));
+}
+
+/**
+ * References in project instruction text that no longer resolve: `npm run <script>`
+ * in code with no such script in the nearest package.json, and code-span paths whose first
+ * segment exists but the rest does not (and git does not ignore). Paths resolve
+ * from the repository root and from the file's own directory; a token whose first
+ * segment exists in neither (a package name, a URL path) is not a path, and
+ * `./` and `../` paths are skipped since they often point outside the repository.
+ */
+export function staleReferences(root: string, file: string, text: string): string[] {
+  const out: string[] = [];
+  const { spans, fences } = codeOf(text);
+  // The nearest package.json at or above the file, within the repository.
+  let manifestPath = "";
+  for (let dir = posix.dirname(file); !manifestPath; dir = posix.dirname(dir)) {
+    if (existsSync(resolve(root, dir, "package.json"))) manifestPath = resolve(root, dir, "package.json");
+    if (dir === ".") break;
+  }
+  if (manifestPath) {
+    let scripts: Record<string, unknown> | undefined;
+    try {
+      scripts = (JSON.parse(readFileSync(manifestPath, "utf8")) as { scripts?: Record<string, unknown> }).scripts;
+    } catch {
+      scripts = undefined;
+    }
+    const missing = new Set<string>();
+    for (const line of [...spans, ...fences].flatMap((code) => code.split("\n"))) {
+      // Another package's scripts: a workspace, a prefix or a changed directory.
+      if (/(?:^|\s)(?:--prefix|-w|--workspace|-C|cd)(?:\s|=)/.test(line)) continue;
+      for (const m of line.matchAll(/\bnpm\s+(?:run(?:-script)?\s+([A-Za-z0-9:_.-]+)|(test)\b)/g)) {
+        const name = (m[1] ?? m[2])!;
+        if (!scripts || !(name in scripts)) missing.add(m[0].replace(/\s+/g, " "));
+      }
+    }
+    const manifest = posix.relative(root.split("\\").join("/"), manifestPath.split("\\").join("/"));
+    for (const command of missing)
+      out.push(`${file}: \`${command}\` has no "${command.split(" ").pop()}" script in ${manifest}`);
+  }
+  const fileDir = posix.dirname(file);
+  const candidates: string[] = [];
+  for (const span of spans) {
+    const token = span.replace(/(?::\d+){1,2}$/, "").replace(/#.*$/, "");
+    // Only repo paths: no globs, placeholders, URLs, absolute, home, package or `./` `../` paths.
+    if (
+      !token.includes("/") ||
+      /[\s*?{}<>$~|\\"'`,;=]/.test(token) ||
+      /^[a-z][a-z0-9+.-]*:/i.test(token) ||
+      /^[/@.-]/.test(token.replace(/^\.(?=[\w-])/, ""))
+    )
+      continue;
+    let stale: string | undefined;
+    let found = false;
+    for (const base of new Set([".", fileDir])) {
+      if (!existsSync(resolve(root, base, token.split("/")[0]!))) continue;
+      const path = posix.normalize(posix.join(base, token)).replace(/\/+$/, "");
+      if (existsSync(resolve(root, path))) found = true;
+      else stale ??= path;
+    }
+    if (!found && stale) candidates.push(stale);
+  }
+  const ignored = ignoredPaths(root, candidates);
+  for (const path of new Set(candidates))
+    if (!ignored.has(path) && !ignored.has(`${path}/`)) out.push(`${file}: \`${path}\` does not exist`);
+  return out;
 }
 
 /**
@@ -234,7 +342,7 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
       );
   }
 
-  // 3. Client adapters must be relative symlinks, never copies.
+  // 3. Client adapters: relative symlinks for directories, an import line for CLAUDE.md; never copies.
   for (const [link, target] of clientLinks(config)) {
     const abs = resolve(root, link);
     const stat = lstatSync(abs, { throwIfNoEntry: false });
@@ -244,6 +352,18 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     else if (readlinkSync(abs) !== target)
       errors.push(`${link} points to ${readlinkSync(abs)}; expected ${target}`);
     else if (!existsSync(abs)) errors.push(`${link} is a dangling symlink`);
+  }
+  if (config.clients.includes("claude")) {
+    const abs = resolve(root, CLAUDE_FILE);
+    const stat = lstatSync(abs, { throwIfNoEntry: false });
+    const want = JSON.stringify(CLAUDE_IMPORT.trim());
+    if (!stat) errors.push(`${CLAUDE_FILE} is missing; run "canons update"`);
+    else if (stat.isSymbolicLink())
+      errors.push(`${CLAUDE_FILE} is a symlink; run "canons update" to replace it with the import ${want}`);
+    else if (!stat.isFile() || !isClaudeImport(readFileSync(abs, "utf8")))
+      errors.push(
+        `${CLAUDE_FILE} must hold only the import ${want}; move its content into ${ROOT_FILE} (canons update --adopt does this)`,
+      );
   }
 
   // 4. Rule files: parseable frontmatter, valid globs, naming, links.
@@ -295,6 +415,56 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
   for (const file of under(config.skillsDir))
     for (const target of brokenLinks(resolve(root, file)))
       warnings.push(`${file}: broken link ${target}`);
+
+  // 6. Skills follow the Agent Skills format; long files and nested references are warnings.
+  const managedSkills = `${config.skillsDir}/${MANAGED_SUBDIR}/`;
+  for (const file of under(config.skillsDir).filter((f) => posix.basename(f) === "SKILL.md")) {
+    const abs = resolve(root, file);
+    errors.push(...checkSkill(root, file));
+    const lines = lineCount(readFileSync(abs, "utf8"));
+    if (lines > MAX_LINES)
+      warnings.push(`${file}: ${lines} lines, over ${MAX_LINES}; move detail into referenced files`);
+    // Only the skill's own bundled files count: links out to repository docs are ordinary.
+    const skillDir = `${dirname(realpathSync(abs))}/`;
+    const own = (path: string) => path.startsWith(skillDir) && existsSync(path) && statSync(path).isFile();
+    for (const ref of localLinks(abs)) {
+      if (!ref.path.endsWith(".md") || !own(ref.path)) continue;
+      const deeper = [
+        ...new Set(
+          localLinks(ref.path)
+            .filter((link) => own(link.path) && link.path !== realpathSync(abs) && link.path !== ref.path)
+            .map((link) => link.target),
+        ),
+      ];
+      if (deeper.length)
+        warnings.push(
+          `${file}: ${ref.target} links on to ${deeper.join(", ")}; keep references one level deep from SKILL.md`,
+        );
+    }
+  }
+
+  // 7. Long rules dilute what agents follow.
+  const projectRules = existsSync(rulesAbs)
+    ? listMarkdown(rulesAbs).map((f) => `${config.rulesDir}/${f}`)
+    : [];
+  for (const file of projectRules) {
+    const lines = lineCount(readFileSync(resolve(root, file), "utf8"));
+    if (lines > MAX_LINES) warnings.push(`${file}: ${lines} lines, over ${MAX_LINES}; split it or move detail into docs`);
+  }
+
+  // 8. Project instruction text (managed content aside) still names scripts and paths that exist.
+  const managedRules = `${config.rulesDir}/${MANAGED_SUBDIR}/`;
+  const projectText: [string, string][] = [];
+  for (const file of instructionFiles) {
+    const text = readFileSync(resolve(root, file), "utf8").replace(/\r\n/g, "\n");
+    projectText.push([file, text.replace(/<!-- canons:begin[\s\S]*?<!-- canons:end -->/, "")]);
+  }
+  for (const file of [
+    ...projectRules.filter((f) => !f.startsWith(managedRules)),
+    ...under(config.skillsDir).filter((f) => !f.startsWith(managedSkills)),
+  ])
+    projectText.push([file, readFileSync(resolve(root, file), "utf8")]);
+  for (const [file, text] of projectText) warnings.push(...staleReferences(root, file, text));
 
   return { errors, warnings };
 }

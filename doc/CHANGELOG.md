@@ -2,7 +2,14 @@
 
 ## Unreleased
 
-- New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks.
+Rule content changes: upgrade with `canons update --accept-major` and review the new block.
+
+- New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks. C22 also asks for surgical changes (every changed line traces to the request, the surrounding style kept, only the change's own leftovers removed) and for stated assumptions and simpler alternatives, with no speculative abstraction, configuration or error handling.
+- C15: decide before starting which checks will show the change works, and run them before finishing. `AGENTS.md` records the exact build, test and lint commands and how to run one test; a new `AGENTS.md` gets a Verification line under Project settings.
+- C6: one term per concept; leave out what agents can infer; a rule that allows no exception becomes a deterministic check instead of louder wording.
+- `CLAUDE.md` is now a one-line file importing `AGENTS.md` (`@AGENTS.md`) instead of a symlink. `update` replaces the old symlink; `verify` reports a symlink or any other content. `.claude/rules` and `.claude/skills` stay symlinks.
+- `verify` checks skills against the Agent Skills format (errors: frontmatter, `name` matching its directory and its character rules, `description` length) and warns about rules and `SKILL.md` over 500 lines, bundled skill files linking more than one level deep, and, in project instruction text, `npm run` scripts missing from the nearest `package.json` and code-span paths that no longer exist.
+- `scopes --effective` lists every instruction file loaded for the given paths (the `AGENTS.md` chain and matched rules) with byte counts.
 
 ## 0.2.1 (2026-11-17)
 

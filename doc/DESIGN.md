@@ -4,7 +4,7 @@ Why canons is shaped the way it is. The README says what it does; this file reco
 
 ## Goal
 
-Every coding agent in a repository, whichever client runs it, follows the same instructions, and those instructions stay true over time. Two things break that in practice: copies that drift apart between clients, and text that quietly stops matching the code. canons answers the first with one source and symlinks, and the second with deterministic checks.
+Every coding agent in a repository, whichever client runs it, follows the same instructions, and those instructions stay true over time. Two things break that in practice: copies that drift apart between clients, and text that quietly stops matching the code. canons answers the first with one source and thin adapters, and the second with deterministic checks.
 
 ## How rule content is written: outcomes, not steps
 
@@ -28,11 +28,11 @@ Two risks come with goal-only text, and the writing guards against both:
 
 ## Text states the outcome, checks enforce it
 
-Wherever an outcome can be checked mechanically — one source, symlinks, the byte budget, managed content left untouched, rule globs and links that resolve, anchors that still exist — `canons verify` checks it. The rule text then only needs the outcome and its reason; it does not need to describe the check. Checks stay deterministic (no network, no AI, no clock) so they give the same answer in every client and in CI.
+Wherever an outcome can be checked mechanically — one source, thin adapters, the byte budget, managed content left untouched, rule globs and links that resolve, anchors that still exist, skills in the shared format, scripts and paths that still exist — `canons verify` checks it. A heuristic check (sizes, nested references, stale names) is a warning, so a false positive never blocks; `--strict` lets a project make it a gate. The rule text then only needs the outcome and its reason; it does not need to describe the check. Checks stay deterministic (no network, no AI, no clock) so they give the same answer in every client and in CI.
 
 ## Other decisions
 
-- **One source, symlinked entry points (C1).** Copies drift, and the drift is invisible until an agent acts on the stale copy.
+- **One source, thin entry points (C1).** Copies drift, and the drift is invisible until an agent acts on the stale copy. `CLAUDE.md` imports `AGENTS.md` (`@AGENTS.md`) instead of linking to it: Claude Code supports the import, a one-line file survives checkouts without symlink support, and nothing can be edited through it by mistake. The `.claude/rules` and `.claude/skills` directories stay symlinks, since Claude Code has no import for them.
 - **Three tiers (C2).** Context is limited; a constraint lives where it is loaded exactly when it applies. Red lines stay in the root file because lower tiers are not guaranteed to load.
 - **A query command instead of trusting native loading (C3).** Clients load path-scoped rules incompletely and differently; `canons scopes` gives every client the same answer.
 - **A managed block with a lock.** The shared baseline must be replaceable as a whole on upgrade, so projects write outside it and `verify` rejects hand edits.

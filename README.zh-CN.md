@@ -8,10 +8,10 @@
 
 同时用多个 coding agent 的团队，常常遇到 `AGENTS.md`、`CLAUDE.md`、`.cursor/rules` 各自漂移，规则只有某一个客户端会加载，红线在有人精简文件时悄悄消失。canons 给每个仓库同一套布局，并用一个小 CLI 守住它：
 
-- **每条指令只有一份。** 只有 `AGENTS.md`、`.agents/rules/`、`.agents/skills/` 是实体文件；客户端入口都是相对软链接。
+- **每条指令只有一份。** 只有 `AGENTS.md`、`.agents/rules/`、`.agents/skills/` 是实体文件；客户端入口是薄适配：`CLAUDE.md` 只有一行导入 `@AGENTS.md`，`.claude/rules`、`.claude/skills` 是相对软链接。
 - **路径级规则对所有客户端生效。** 规则在 frontmatter 里声明 `paths`。Claude Code 原生加载；其他客户端由根指令要求修改前跑 `canons scopes <路径>`、完成前跑 `canons scopes --changed`。
 - **共享基线。** `AGENTS.md` 里的托管区块承载通用的 agent 约定（Git 授权、验证、交接、文档卫生）。项目自己的规则写在区块之外。
-- **确定性守护。** `canons verify` 能发现：托管内容被手改、用复制代替软链接、`AGENTS.md`、规则和技能里的死链、会让 Codex 跳过 `AGENTS.md` 的 `AGENTS.override.md`，以及超出 Codex 读取上限（32 KiB）的指令链。
+- **确定性守护。** `canons verify` 能发现：托管内容被手改、用复制代替适配、`AGENTS.md`、规则和技能里的死链、会让 Codex 跳过 `AGENTS.md` 的 `AGENTS.override.md`、超出 Codex 读取上限（32 KiB）的指令链、不符合 [Agent Skills](https://agentskills.io/specification) 格式的技能，以及项目指令里已经不存在的 npm script 和路径。
 
 ## 交给 coding agent 安装
 
@@ -37,7 +37,7 @@ npx canons create --locale zh-CN
 npx canons verify
 ```
 
-包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。没有 `package.json` 的仓库改为运行 `npx -y @canons-dev/canons@latest create --locale zh-CN`：`create` 会选用 `npx` runner，托管规则里写的是带确切版本号的命令（见下文 `runner`）。`create` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，为 Claude Code 建好软链接，并写出 `canons.lock.json`。这些文件都要提交。
+包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。没有 `package.json` 的仓库改为运行 `npx -y @canons-dev/canons@latest create --locale zh-CN`：`create` 会选用 `npx` runner，托管规则里写的是带确切版本号的命令（见下文 `runner`）。`create` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，写好 Claude Code 的入口（导入 `AGENTS.md` 的 `CLAUDE.md`，以及 `.claude/rules`、`.claude/skills` 软链接），并写出 `canons.lock.json`。这些文件都要提交。
 
 新建的 `AGENTS.md` 还会带一节**项目设定**，托管规则会读取它：UI 语言（没写时 agent 会在写面向用户的文字前先和你确认）、开发语言（没写时用系统语言）、目录结构（没写时用 `src/`、`doc/`、`tmp/`，其他目录也用三个字母的名字）。已有的 `AGENTS.md` 请在 canons 区块之外补上同样一节。
 
@@ -69,9 +69,9 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 | 命令 | 作用 |
 | --- | --- |
 | `canons create [--locale <code>] [--runner local\|npx] [--adopt]` | 创建 `canons.json` 并执行 `update`。`canons.json` 最后才写，被拒绝时不留下任何文件。 |
-| `canons update [--accept-major] [--force] [--adopt]` | 用已安装的版本重写托管区块、托管规则、客户端软链接和 lock（不会升级 npm 包）。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。`--adopt` 把实体的 `CLAUDE.md`、`.claude/rules`、`.claude/skills` 搬进 `AGENTS.md` / `.agents/` 并建软链接；会覆盖或需要合并不同内容时拒绝。 |
-| `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。 |
-| `canons scopes [--changed] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。 |
+| `canons update [--accept-major] [--force] [--adopt]` | 用已安装的版本重写托管区块、托管规则、客户端适配和 lock（不会升级 npm 包）；旧版本留下的 `CLAUDE.md` 软链接会换成导入。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。`--adopt` 把实体的 `CLAUDE.md`、`.claude/rules`、`.claude/skills` 搬进 `AGENTS.md` / `.agents/` 并换成适配；会覆盖或需要合并不同内容时拒绝。 |
+| `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。error：托管内容、适配、字节预算、`AGENTS.md` 和规则里的链接、规则语法和 anchors，以及 Agent Skills 格式（`name` 与目录名一致、小写字母数字加单个连字符、不超过 64 字符；`description` 不超过 1024 字符）。warning：规则或 `SKILL.md` 超过 500 行、技能自带文件的引用超过一层、技能里的死链，以及托管内容之外 `npm run` 的 script 在最近的 `package.json` 里不存在、代码片段里的路径第一层目录存在但后面不存在（跳过 git 忽略的路径和 `./`、`../` 开头的路径）。 |
+| `canons scopes [--changed] [--effective] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。`--effective` 另外列出这些路径实际加载的全部指令文件（从根往下的 `AGENTS.md` 链和命中的规则）及字节数。 |
 | `canons latest [--json] [--decline <版本>]` | 对比本仓库用的版本和最新发布的版本（联网）：是否破坏性升级、CHANGELOG 在哪。有新版时退出码为 10。`--decline` 让更新提示不再提该版本。 |
 | `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |
 
@@ -114,11 +114,11 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 | 客户端 | 如何读到指令 |
 | --- | --- |
 | Codex | 原生从仓库根往下读到工作目录的各级 `AGENTS.md`，并读取 `.agents/skills/`。交互式客户端启动前会要求你信任该目录。 |
-| Claude Code | `CLAUDE.md -> AGENTS.md`、`.claude/rules -> ../.agents/rules`、`.claude/skills -> ../.agents/skills`；规则按 `paths` 原生加载。 |
+| Claude Code | `CLAUDE.md` 内容是 `@AGENTS.md`（导入）；`.claude/rules -> ../.agents/rules`、`.claude/skills -> ../.agents/skills`；规则按 `paths` 原生加载。 |
 | Cursor、GitHub Copilot | 原生读取 `AGENTS.md`。 |
 | Gemini CLI | 把 `context.fileName` 设为 `["AGENTS.md"]`。 |
 
-Windows 用户在 clone 前先启用软链接（开启开发者模式后执行 `git config core.symlinks true`）；canons 不会退化成复制文件。
+Windows 用户在 clone 前先启用软链接（开启开发者模式后执行 `git config core.symlinks true`），供 `.claude/rules`、`.claude/skills` 使用；canons 不会退化成复制文件。
 
 ## 版本
 

@@ -2,6 +2,9 @@
   "name": "example-service",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
   "devDependencies": {
     "@canons-dev/canons": "^0.1.0"
   }
