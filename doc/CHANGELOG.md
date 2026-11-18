@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-11-18)
 
-Rule content changes: upgrade with `canons update --accept-major` and review the new block.
+This release changes the managed rules (new items C22–C28, tightened C6, C8, C10, C11, C15, C20) and the `CLAUDE.md` adapter, but is published as a patch, so `update` applies it without `--accept-major`. Review the new block after upgrading, and check that the root `AGENTS.md` still fits its budget.
 
 - New C22: do what was asked, at the scope asked. A one-off request is not a standing rule, a decision needs no guard against its reversal, and extras wait until the user asks. C22 also asks for surgical changes (every changed line traces to the request, the surrounding style kept, only the change's own leftovers removed) and for stated assumptions and simpler alternatives, with no speculative abstraction, configuration or error handling.
 - C15: decide before starting which checks will show the change works, and run them before finishing. `AGENTS.md` records the exact build, test and lint commands and how to run one test; a new `AGENTS.md` gets a Verification line under Project settings.
