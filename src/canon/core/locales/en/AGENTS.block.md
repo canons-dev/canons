@@ -17,10 +17,10 @@ For every coding agent in this repository. Each item names an outcome and why; a
 
 ### Collaboration and authority
 
-- **C8** Git state changes (such as commit, push, merge, rebase, reset, stash, opening a PR) are the user's call: they touch shared history, others' work and releases. Make them only on explicit instruction; read-only commands and the C9 sync are exempt, and steps of an authorized task need no second confirmation.
+- **C8** Git state changes (such as commit, push, merge, rebase, reset, stash, opening a PR) are the user's call: they touch shared history, others' work and releases. Make them only on explicit instruction; read-only commands and the C9 sync are exempt, and steps of an authorized task need no second confirmation. `AGENTS.md` records, outside this block, the base branch, PR target, branch prefix and who merges.
 - **C9** Start from the latest upstream code and never overwrite others' in-progress work: check the working tree, then sync (for example fetch and fast-forward, or branch from the fresh base). Ask first when syncing needs a merge or rebase or touches others' changes, or before editing a file another session is changing. Worktrees do not isolate databases, ports or other shared resources.
-- **C10** Genuine ambiguity in requirements, behavior, interfaces or naming, or a user decision that conflicts with these rules, is the user's to resolve. Name the divergence, give mutually exclusive options with your recommendation and its cost, then wait.
-- **C11** Keep fact and inference apart: mark unverified judgements with their basis and how to verify them; cite second-hand conclusions and never promote them to fact.
+- **C10** Genuine ambiguity in requirements, behavior, interfaces or naming, or a user decision that conflicts with these rules, is the user's to resolve. Name the divergence, give mutually exclusive options with your recommendation and its cost, then wait. When the sound long-term solution costs clearly more than a shortcut, present both with the trade-off instead of taking the shortcut yourself.
+- **C11** Keep fact and inference apart: mark unverified judgements with their basis and how to verify them; cite second-hand conclusions and never promote them to fact. Never invent results; numbers and conclusions cite their source (command output, file).
 - **C12** A missing capability (sub-agents, browser, question UI) changes the method, not the requirement: required confirmations and verification still happen, and what stays unverified is reported.
 - **C13** A handoff lets the receiver continue without asking back: write it in the temporary directory (goal, scope, changed files, decisions, verification, remaining work, open questions) and pass it on explicitly. Durable knowledge goes into docs.
 - **C14** Every stage, including a non-interactive run, ends with an explicit settlement verdict, so the user knows without reading back whether the session is done and safe to archive; each open item names its blocker, owner and next step (for example as a table). Uncommitted changes, unsynced upstream, unmerged PRs, pending deploys, re-tests and user decisions count as open.
@@ -38,7 +38,7 @@ For every coding agent in this repository. Each item names an outcome and why; a
 
 - **C18** New names read as part of their neighbours' set: same length first (letters, extension excluded), then part of speech, number, segmentation, case and separators. When neighbours disagree, follow the larger, more recent group; ask when unsure.
 - **C19** After changing shared semantics (an API parameter, hook or constant), every caller still works, so review all call sites first. Record any coupling that must change in step as a sync point in the docs.
-- **C20** Other repositories (siblings, reference implementations, nearby dependency sources) are read-only unless the user allows changes. In a worktree, confirm where a sibling actually is instead of assuming `../`.
+- **C20** Other repositories (siblings, reference implementations, nearby dependency sources) are read-only unless the user allows changes. In a worktree, confirm where a sibling actually is instead of assuming `../`. Refer to another repository's file as `repo:path`.
 - **C21** What the project deliberately defers or declines is listed in its docs and is the project's call; do not add it on the side. When something looks missing, check that list first.
 - **C22** Do what was asked, at the scope asked; read an instruction no wider than it is. Every changed line traces to the request: no drive-by reformatting or refactoring, match the surrounding style, clean up only what your own change left unused. State your assumptions and any simpler approach; no single-use abstraction, unrequested configuration or handling for impossible errors. A one-off request is not a standing rule, and a decision needs no guard against its reversal. Extra features, rules, docs or safeguards wait until the user asks, mentioned in one line at most; what the change itself requires (C15, C19) is not extra.
 
@@ -46,3 +46,10 @@ For every coding agent in this repository. Each item names an outcome and why; a
 
 - **C23** Keep the main conversation focused: long or complex work that would crowd or steer its context (wide searches, long investigations, independent pieces) goes to a sub-agent or separate session when the client offers one, with a brief it can act on (C13); take back the result, not the process. Finish what you start: once the result is in, close or archive it and say so in the settlement (C14).
 - **C24** Replies lead with results, key conclusions and the decisions the user must make. Leave out repeated explanations, needless disclaimers, generic reminders and unrelated alternatives; a supplement worth keeping goes in a file where the project keeps such notes (for example the temporary directory, C7), pointed to in one line. Unverified marks (C11) and the settlement (C14) are not redundancy.
+
+### Data and operation
+
+- **C25** Failures reach a person: a new feature states how it can fail and how someone learns of it. A catch, fallback or exhausted retry that only logs is not handling, and failures caused by user input count too.
+- **C26** Tests and verification never touch real users' data or accounts, only designated test data and accounts, which `AGENTS.md` names outside this block.
+- **C27** Changes stay compatible with what is already running: shared databases, interfaces and configuration change by addition, so the deployed code keeps working.
+- **C28** Secrets stay out of code, docs and instruction files; only values that differ between environments belong in environment variables.

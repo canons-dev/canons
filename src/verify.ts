@@ -105,6 +105,28 @@ function codeOf(text: string): { spans: string[]; fences: string[] } {
   return { spans, fences };
 }
 
+// A date next to a word that marks a past state ("renamed on 2026-08-18", "曾…，2026-11 起改为").
+const DATED_HISTORY_RE =
+  /\b20\d\d-[01]\d(?:-[0-3]\d)?\b.*?(?:\b(?:formerly|previously|used to|renamed|was|were|no longer|moved|migrated|replaced|before)\b|曾|原来|之前|以前|此前|改名|改为|改成|迁到|迁移|不再|取代)|(?:\b(?:formerly|previously|used to|renamed|was|were|no longer|moved|migrated|replaced|before)\b|曾|原来|之前|以前|此前|改名|改为|改成|迁到|迁移|不再|取代).*?\b20\d\d-[01]\d(?:-[0-3]\d)?\b/i;
+
+/**
+ * Wording that works against the single source: citing CLAUDE.md as if it held
+ * content (it only imports AGENTS.md), and dated history in instructions, which
+ * should hold current knowledge only.
+ */
+function wordingWarnings(file: string, text: string): string[] {
+  const out: string[] = [];
+  const lines = text.replace(FENCE_RE, (fence) => fence.replace(/[^\n]/g, "")).split("\n");
+  lines.forEach((line, i) => {
+    const at = `${file}:${i + 1}`;
+    if (/(?:`CLAUDE\.md`|\bCLAUDE\.md)\s*(?:§|#[\w-])|\]\((?:[^)\s]*\/)?CLAUDE\.md(?:#[^)]*)?\)/.test(line))
+      out.push(`${at}: cites CLAUDE.md, which only imports ${ROOT_FILE}; cite ${ROOT_FILE}`);
+    if (DATED_HISTORY_RE.test(line))
+      out.push(`${at}: dated history; instructions hold current knowledge and its reasons, not how it got there`);
+  });
+  return out;
+}
+
 /** Paths among `paths` (repo-relative) that git ignores; they may legitimately be absent. */
 function ignoredPaths(root: string, paths: string[]): Set<string> {
   if (!paths.length) return new Set();
@@ -427,18 +449,20 @@ export function verify(root: string, options: VerifyOptions = {}): VerifyResult 
     }
   }
 
-  // 7. Project instruction text (managed content aside) still names scripts and paths that exist.
+  // 7. Project instruction text (managed content aside): scripts and paths that exist, wording.
   const projectText: [string, string][] = [];
   for (const file of instructionFiles) {
     const text = readFileSync(resolve(root, file), "utf8").replace(/\r\n/g, "\n");
-    projectText.push([file, text.replace(/<!-- canons:begin[\s\S]*?<!-- canons:end -->/, "")]);
+    // Blank out the managed block but keep its line breaks, so line numbers stay right.
+    projectText.push([file, text.replace(/<!-- canons:begin[\s\S]*?<!-- canons:end -->/, (block) => block.replace(/[^\n]/g, ""))]);
   }
   for (const file of [
     ...ruleFiles.map((f) => `${config.rulesDir}/${f}`).filter((f) => !f.startsWith(managedRules)),
     ...under(config.skillsDir).filter((f) => !f.startsWith(managedSkills)),
   ])
     projectText.push([file, readFileSync(resolve(root, file), "utf8")]);
-  for (const [file, text] of projectText) warnings.push(...staleReferences(root, file, text));
+  for (const [file, text] of projectText)
+    warnings.push(...staleReferences(root, file, text), ...wordingWarnings(file, text));
 
   return { errors, warnings };
 }

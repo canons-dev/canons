@@ -520,3 +520,29 @@ test("scopes --effective lists the AGENTS.md chain and matched rules with byte c
   assert.equal(result.effective[1]!.bytes, 6);
   assert.equal(result.bytes, result.effective.reduce((sum, e) => sum + e.bytes, 0));
 });
+
+test("verify warns about CLAUDE.md citations and dated history in project instructions", () => {
+  const root = synced();
+  const agentsPath = join(root, "AGENTS.md");
+  writeFileSync(
+    agentsPath,
+    `${readFileSync(agentsPath, "utf8")}
+- Git flow: see \`CLAUDE.md\` §Git, or [the guide](CLAUDE.md#git).
+- The handler was renamed on 2026-08-18.
+- 2026-11 起改为先部署再合并。
+- Releases ship on 2026-12-01.
+
+\`\`\`text
+renamed 2026-01-01 inside a fence is fine
+\`\`\`
+`,
+  );
+  const warnings = verify(root).warnings.filter((w) => w.startsWith("AGENTS.md:"));
+  const lines = (pattern: RegExp) =>
+    warnings.filter((w) => pattern.test(w)).map((w) => Number(/^AGENTS\.md:(\d+)/.exec(w)![1]));
+  const text = readFileSync(agentsPath, "utf8").split("\n");
+  const lineOf = (needle: string) => text.findIndex((l) => l.includes(needle)) + 1;
+  assert.deepEqual(lines(/cites CLAUDE\.md/), [lineOf("Git flow")], "one warning per line, with the real line number");
+  assert.deepEqual(lines(/dated history/), [lineOf("renamed on"), lineOf("起改为")]);
+  assert.ok(!warnings.some((w) => w.includes("canons:begin")));
+});

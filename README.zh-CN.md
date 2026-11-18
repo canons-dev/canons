@@ -39,7 +39,7 @@ npx canons verify
 
 包会安装一个 `canons` 命令。请把它装成 dev dependency，这样托管规则要求 agent 运行的 `npx canons` 会解析到锁定版本的本地副本。没有 `package.json` 的仓库改为运行 `npx -y @canons-dev/canons@latest create --locale zh-CN`：`create` 会选用 `npx` runner，托管规则里写的是带确切版本号的命令（见下文 `runner`）。`create` 会创建 `canons.json`，在 `AGENTS.md` 里插入托管区块（文件不存在就新建），把托管规则写进 `.agents/rules/canons/`，写好 Claude Code 的入口（导入 `AGENTS.md` 的 `CLAUDE.md`，以及 `.claude/rules`、`.claude/skills` 软链接），并写出 `canons.lock.json`。这些文件都要提交。
 
-新建的 `AGENTS.md` 还会带一节**项目设定**，托管规则会读取它：UI 语言（没写时 agent 会在写面向用户的文字前先和你确认）、开发语言（没写时用系统语言）、目录结构（没写时用 `src/`、`doc/`、`tmp/`，其他目录也用三个字母的名字）。已有的 `AGENTS.md` 请在 canons 区块之外补上同样一节。
+新建的 `AGENTS.md` 还会带一节**项目设定**，托管规则会读取它：UI 语言（没写时 agent 会在写面向用户的文字前先和你确认）、开发语言（没写时用系统语言）、Git 流程、验证命令、agent 可以使用的测试数据、目录结构（没写时用 `src/`、`doc/`、`tmp/`，其他目录也用三个字母的名字）。已有的 `AGENTS.md` 请在 canons 区块之外补上同样一节。
 
 然后添加项目自己的规则：
 
@@ -70,7 +70,7 @@ npx canons scopes --changed          # 我的改动适用哪些规则？
 | --- | --- |
 | `canons create [--locale <code>] [--runner local\|npx] [--adopt]` | 创建 `canons.json` 并执行 `update`。`canons.json` 最后才写，被拒绝时不留下任何文件。 |
 | `canons update [--accept-major] [--force] [--adopt]` | 用已安装的版本重写托管区块、托管规则、客户端适配和 lock（不会升级 npm 包）；旧版本留下的 `CLAUDE.md` 软链接会换成导入。默认拒绝覆盖手工修改（`--force` 才覆盖），拒绝破坏性的规则升级（`--accept-major` 才放行）。所有拒绝（包括客户端文件挡路、目录不可写）都发生在写第一个文件之前。`--adopt` 把实体的 `CLAUDE.md`、`.claude/rules`、`.claude/skills` 搬进 `AGENTS.md` / `.agents/` 并换成适配；会覆盖或需要合并不同内容时拒绝。 |
-| `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。error：托管内容、适配、字节预算、`AGENTS.md` 和规则里的链接、规则语法和 anchors，以及 Agent Skills 格式（`name` 与目录名一致、小写字母数字加单个连字符、不超过 64 字符；`description` 不超过 1024 字符）。warning：规则或 `SKILL.md` 超过 500 行、技能自带文件的引用超过一层、技能里的死链，以及托管内容之外 `npm run` 的 script 在最近的 `package.json` 里不存在、代码片段里的路径第一层目录存在但后面不存在（跳过 git 忽略的路径和 `./`、`../` 开头的路径）。 |
+| `canons verify [--strict]` | 确定性检查；有 error 时退出码为 1（`--strict` 下 warning 也算失败）。error：托管内容、适配、字节预算、`AGENTS.md` 和规则里的链接、规则语法和 anchors，以及 Agent Skills 格式（`name` 与目录名一致、小写字母数字加单个连字符、不超过 64 字符；`description` 不超过 1024 字符）。warning：规则或 `SKILL.md` 超过 500 行、技能自带文件的引用超过一层、技能里的死链，以及托管内容之外 `npm run` 的 script 在最近的 `package.json` 里不存在、代码片段里的路径第一层目录存在但后面不存在（跳过 git 忽略的路径、`./`、`../` 开头的路径和 `仓库名:路径` 形式的跨仓引用）、把 `CLAUDE.md` 当作出处引用，以及带日期的历史叙述（日期旁出现"改名""曾"等词）。 |
 | `canons scopes [--changed] [--effective] [--json] <路径>...` | 列出 `paths` 命中的规则。没有 `paths` 的规则是全局规则，始终列出。`--effective` 另外列出这些路径实际加载的全部指令文件（从根往下的 `AGENTS.md` 链和命中的规则）及字节数。 |
 | `canons latest [--json] [--decline <版本>]` | 对比本仓库用的版本和最新发布的版本（联网）：是否破坏性升级、CHANGELOG 在哪。有新版时退出码为 10。`--decline` 让更新提示不再提该版本。 |
 | `canons doctor` | 环境提示（软链接支持、Codex hooks、其他客户端）。 |

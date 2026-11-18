@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "canons": "0.2.1",
   "locale": "en",
-  "block": "b161b0cbfd20d7e21334f8595b014cf3f64cb07036a6ff3450d924ba782badf2",
+  "block": "5e3029afc41f8e2a36ef92fa5775f8b08b41dcb029124619e8db82bb3ec5d21b",
   "files": {
     ".agents/rules/canons/layout.md": "21b56ff2f242765875a753cc9637c0f9d45e4aa87e423601c63c1bfb0ed4ad1b",
     ".agents/rules/canons/vendor.md": "e6362775c16c4c0c19d16a65cfdc140c24ba283e325aede3467384c1f75f4b14",
