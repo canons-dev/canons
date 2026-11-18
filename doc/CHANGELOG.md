@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 (2026-11-18)
 
-Breaking for `canons.json` and `canons.lock.json`; there is no automatic migration.
+Breaking for `canons.json` and `canons.lock.json`, published as a patch; there is no automatic migration. Rename the keys below in both files, then run `canons update`.
 
 - `canons.json` keys have six lowercase letters: `version` → `format`, `clients` → `agents`, `sourceDirs` → `source`, `docDirs` → `docset`, `budgetBytes` → `budget`, `ruleNamePattern` → `naming`, `updateCheck` → `notify`. `rulesDir`, `skillsDir`, `presets` and `hooks` are removed: rules and skills always live in `.agents/rules/` and `.agents/skills/`. Old keys are rejected as unknown.
 - `canons.lock.json` keys likewise: `lockfileVersion` → `format`, `block` → `digest`, `files` → `hashes`. A lock with the old keys is reported as invalid; rename its keys by hand.
