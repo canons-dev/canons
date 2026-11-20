@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4 (2026-11-20)
+
+No changes to rules, skills or the CLI; this release only checks the publish workflow, now `.github/workflows/upload.yml`. Upgrading is optional: decline it with `canons latest --decline 0.2.4`.
+
 ## 0.2.3 (2026-11-18)
 
 Breaking for `canons.json` and `canons.lock.json`, published as a patch; there is no automatic migration. Rename the keys below in both files, then run `canons update`.
