@@ -1,6 +1,6 @@
 # Publishes to npm with trusted publishing (OIDC); provenance is attached
 # automatically. Configure the trusted publisher on npmjs.com for
-# canons-dev/canons, workflow release.yml (rename to upload.yml once the trusted publisher is switched). Renaming this file requires updating the trusted publisher first.
+# canons-dev/canons, workflow upload.yml. Renaming this file requires updating the trusted publisher first.
 name: upload
 
 on:
